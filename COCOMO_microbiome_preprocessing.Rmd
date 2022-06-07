@@ -1,0 +1,594 @@
+---
+title: "Microbiome processing"
+output: html_notebook
+---
+
+
+Input : OTU table (genus, family, phylum)
+1) Remove features with strange annotations
+2
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+
+
+```{r}
+library(dplyr)
+```
+
+```{r}
+library(phyloseq)
+library("ggplot2")
+library("scales")
+library("grid")
+library(xlsx)
+library("colorspace")
+library(vegan)
+library(reshape2)
+library(funrar)
+library(gridExtra)
+```
+
+```{r}
+col <- c("#6b8150", "#2273C3","#EFC144","#868686")
+col_border <- darken(col, 0.5)
+```
+
+# 1) prepare phyloseq input
+## load data
+## remove HC
+
+
+
+
+```{r}
+data_genus <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/data/microbiome_COCOMO_genus.csv")
+data_family <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/data/microbiome_COCOMO_family.csv")
+data_phylum <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/data/microbiome_COCOMO_phylum.csv")
+```
+
+```{r}
+cluster <- read.csv("processing/cluster_SNF_3_omics_3_clusters_plusHC.csv")
+cluster <- cluster[cluster$id %in% data_genus$ID,]
+cluster$cluster[is.na(cluster$cluster)] <- "Ctrl"
+cluster$X <- NULL
+names(cluster)[2] <- "X"
+```
+
+### process data
+```{r}
+data_phylum_2 <- data_phylum
+data_phylum_2 <- data_phylum_2[,c(1,2, grep("D_1", colnames(data_phylum_2)))]
+colnames(data_phylum_2)[-c(1,2)] <- gsub(".*D_1__", "",colnames(data_phylum_2)[-c(1,2)])
+colnames(data_phylum_2)[grep("uncultured", colnames(data_phylum_2))] <- "Other"
+colnames(data_phylum_2)[grep("unidentified", colnames(data_phylum_2))] <- "Other"
+colnames(data_phylum_2)[grep("metagenome", colnames(data_phylum_2))] <- "Other"
+data_phylum_2 <- data_phylum_2[,colnames(data_phylum_2) != "Other"]
+names(data_phylum_2)[1] <- "X"
+data_phylum_2$Category <- NULL
+data_phylum_2[,-1] <- make_relative(as.matrix(data_phylum_2[,-1]))
+write.csv(data_phylum_2, "processing/data_phylum_clean.csv")
+```
+
+```{r}
+data_family_2 <- data_family
+data_family_2 <- data_family_2[,c(1,2, grep("D_4", colnames(data_family_2)))]
+colnames(data_family_2)[-c(1,2)] <- gsub(".*D_4__", "",colnames(data_family_2)[-c(1,2)])
+colnames(data_family_2)[grep("uncultured", colnames(data_family_2))] <- "Other"
+colnames(data_family_2)[grep("unidentified", colnames(data_family_2))] <- "Other"
+colnames(data_family_2)[grep("metagenome", colnames(data_family_2))] <- "Other"
+data_family_2 <- data_family_2[,colnames(data_family_2) != "Other"]
+names(data_family_2)[1] <- "X"
+data_family_2$Category <- NULL
+data_family_2[,-1] <- make_relative(as.matrix(data_family_2[,-1]))
+write.csv(data_family_2, "processing/data_family_clean.csv")
+```
+
+```{r}
+data_genus_2 <- data_genus
+names(data_genus_2)[1] <- "X"
+data_genus_2$Category <- NULL
+data_genus_3 <- data_genus_2
+data_genus_2 <- data_genus_2[,c(1, grep("D_5", colnames(data_genus_2)))]
+colnames(data_genus_2)[-c(1)] <- gsub(".*D_5__", "",colnames(data_genus_2)[-c(1)])
+colnames(data_genus_2)[grep("uncultured", colnames(data_genus_2))] <- "Other"
+colnames(data_genus_2)[grep("unidentified", colnames(data_genus_2))] <- "Other"
+colnames(data_genus_2)[grep("metagenome", colnames(data_genus_2))] <- "Other"
+data_genus_2 <- data_genus_2[,colnames(data_genus_2) != "Other"]
+data_genus_2[,-1] <- make_relative(as.matrix(data_genus_2[,-1]))
+write.csv(data_genus_2, "processing/data_genus_clean_relative_abundance.csv")
+```
+
+```{r}
+color_phylym <- c("#8b0000","#eb8c00","#f9d62e","#c9df8a","#36802d","#77ab59","#71c7ec","#189ad3","#1ebbd7","#eec1ad","#ff7f50","#e0301e","#e5e5e5", "grey", "blue", "green", "pink")
+```
+
+## phylum
+```{r}
+relative_abundance_table <- merge(cluster, data_phylum_2, by = "X")
+relative_abundance_table$X <- NULL
+relative_abundance_table <- aggregate(. ~ cluster, data=relative_abundance_table, FUN=sum)
+relative_abundance_table_2 <- data.frame(t(relative_abundance_table[,-1]))
+colnames(relative_abundance_table_2) <- relative_abundance_table$cluster
+relative_abundance_table_2$Names <- rownames(relative_abundance_table_2)
+relative_abundance_table_2$Names <- ifelse(rowSums(relative_abundance_table_2[,-5]) > 1, relative_abundance_table_2$Names, "Other")
+relative_abundance_table_2 <- aggregate(. ~ Names, data=relative_abundance_table_2, FUN=sum)                                          
+
+x <- c(relative_abundance_table_2$Names[relative_abundance_table_2$Names != "Other"], "Other")
+relative_abundance_table_2$Names <- factor(relative_abundance_table_2$Names, levels = x)
+
+col1 <- c(color_phylym[1:length(x)-1], "#E5E5E5")
+
+relative_abundance_table_2 <- melt(relative_abundance_table_2, id.vars = "Names")
+relative_abundance_table_2$variable <- factor(relative_abundance_table_2$variable, levels = c("Ctrl", 1, 2, 3))
+
+m2 <- ggplot(relative_abundance_table_2, aes(fill=Names, y=value, x=variable)) + 
+    geom_bar(position="fill", stat="identity", alpha= 0.6)+ylab("Relative abundance")+ theme_minimal()+ 
+    theme(
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 7,color="black"),
+          legend.position="bottom")+
+  theme(plot.margin=unit(c(0,1,1.5,1.2),"cm"), legend.key.size = unit(0.5, 'cm'), legend.text=element_text(size=6))+scale_fill_manual(values = col1)
+
+m2
+ggsave("results/figures_2/phylum_barplot_mean.pdf")
+```
+## family
+```{r}
+relative_abundance_table <- merge(cluster, data_family_2, by = "X")
+relative_abundance_table$X <- NULL
+relative_abundance_table <- aggregate(. ~ cluster, data=relative_abundance_table, FUN=sum)
+relative_abundance_table_2 <- data.frame(t(relative_abundance_table[,-1]))
+colnames(relative_abundance_table_2) <- relative_abundance_table$cluster
+relative_abundance_table_2$Names <- rownames(relative_abundance_table_2)
+relative_abundance_table_2$Names <- ifelse(rowSums(relative_abundance_table_2[,-5]) > 1, relative_abundance_table_2$Names, "Other")
+relative_abundance_table_2 <- aggregate(. ~ Names, data=relative_abundance_table_2, FUN=sum)                                          
+
+x <- c(relative_abundance_table_2$Names[relative_abundance_table_2$Names != "Other"], "Other")
+relative_abundance_table_2$Names <- factor(relative_abundance_table_2$Names, levels = x)
+
+relative_abundance_table_2 <- melt(relative_abundance_table_2, id.vars = "Names")
+relative_abundance_table_2$variable <- factor(relative_abundance_table_2$variable, levels = c("Ctrl", 1, 2, 3))
+
+
+
+col1 <- c(color_phylym[c(1:12)], "#8b4600","#8b0046", "#e5e5e5")
+
+m2 <- ggplot(relative_abundance_table_2, aes(fill=Names, y=value, x=variable)) + 
+    geom_bar(position="fill", stat="identity", alpha= 0.6)+ylab("Relative abundance")+ theme_minimal()+ 
+    theme(
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 7,color="black"),
+          legend.position="bottom")+
+  theme(plot.margin=unit(c(0,1,1.5,1.2),"cm"), legend.key.size = unit(0.5, 'cm'), legend.text=element_text(size=6))+scale_fill_manual(values = col1)
+
+m2
+ggsave("results/figures_2/family_barplot_mean.pdf")
+```
+
+## genus
++scale_fill_manual(values = color_phylym)
+```{r}
+relative_abundance_table <- merge(cluster, data_genus_2, by = "X")
+relative_abundance_table$X <- NULL
+relative_abundance_table <- aggregate(. ~ cluster, data=relative_abundance_table, FUN=sum)
+relative_abundance_table_2 <- data.frame(t(relative_abundance_table[,-1]))
+colnames(relative_abundance_table_2) <- relative_abundance_table$cluster
+relative_abundance_table_2$Names <- rownames(relative_abundance_table_2)
+relative_abundance_table_2$Names <- ifelse(rowSums(relative_abundance_table_2[,-5]) > 1, relative_abundance_table_2$Names, "Other")
+relative_abundance_table_2 <- aggregate(. ~ Names, data=relative_abundance_table_2, FUN=sum)       
+
+x <- c(relative_abundance_table_2$Names[relative_abundance_table_2$Names != "Other"], "Other")
+relative_abundance_table_2$Names <- factor(relative_abundance_table_2$Names, levels = x)
+
+relative_abundance_table_2 <- melt(relative_abundance_table_2, id.vars = "Names")
+relative_abundance_table_2$variable <- factor(relative_abundance_table_2$variable, levels = c("Ctrl", 1, 2, 3))
+
+
+
+m2 <- ggplot(relative_abundance_table_2, aes(fill=Names, y=value, x=variable)) + 
+    geom_bar(position="fill", stat="identity", alpha= 0.6)+ylab("Relative abundance")+ theme_minimal()+ 
+    theme(
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 7,color="black"),
+          legend.position="bottom")+
+  theme(plot.margin=unit(c(0,1,1.5,1.2),"cm"), legend.key.size = unit(0.2, 'cm'), legend.text=element_text(size=6))
+
+m2
+ggsave("results/figures_2/genus_barplot_mean.pdf")
+```
+
+```{r}
+clinical <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/clinical_data_microbiome_project.csv")
+clinical$Combined_therapy <- gsub("\\/.*", "", clinical$Combined_therapy)
+clinical$Combined_therapy <- ifelse(clinical$Combined_therapy %in% c("ABC", "AZT", "TAF", "TDF"), clinical$Combined_therapy, "Others")
+clinical <- merge(cluster, clinical, by = "X", all.x = TRUE)
+data <- select(clinical, X, Transm_mode, METS, hypertension, central_obesity, Combined_therapy, X3rd_Drug, BMI, GENDER, X3rd_Drug, CD4, AGE)
+data$BMI_cat[data$BMI >= 35] <- "extremely obese"
+data$BMI_cat[data$BMI < 18.5] <- "underweight"
+data$BMI_cat[data$BMI >= 18.5 & data$BMI < 25] <- "normal"
+data$BMI_cat[data$BMI >= 25 & data$BMI < 30] <- "overweight"
+data$BMI_cat[data$BMI >= 30 & data$BMI < 35] <- "obese"
+
+data$BMI_cat <- factor(data$BMI_cat, levels = c("underweight", "normal", "overweight", "obese", "extremely obese"))
+clinical <- data
+
+```
+
+
+```{r}
+samples_table <- clinical
+```
+
+
+## make taxonomy table
+```{r}
+tax_table <- colnames(data_genus)[-c(1,2)]
+names_tax <- c("Super_group", "Division", "Class", "Order", "Family", "Genus")
+
+tax_table_2 <- data.frame(matrix(rep(0,6), 1, 6))
+
+colnames(tax_table_2) <- names_tax
+
+for (i in 1:length(tax_table)) {
+    x <- strsplit(as.character(tax_table[i]), "__")
+    x[[1]][7] <- ifelse(grepl("D_5", x[[1]][6]), x[[1]][7] , ".")
+    n <- c()
+    
+    for (j in 2:length(x[[1]])) {
+        y <- x[[1]][j]
+        y <- gsub("\\.D.*", "",y)
+        m <- j-1
+        n[[m]] <- y
+    }
+    tax_table_2 <- rbind(tax_table_2, n)
+}
+tax_table_2 <- tax_table_2[-1,]
+
+for (i in 1:nrow(tax_table_2)) {
+    for (j in 1:ncol(tax_table_2)) {
+        if(grepl("uncultured",tax_table_2[i,j])){
+            print(tax_table_2[i,j])
+            tax_table_2[i,j] <- "uncultured"
+        }
+      if(grepl("metagenome",tax_table_2[i,j])){
+            print(tax_table_2[i,j])
+            tax_table_2[i,j] <- "uncultured"
+      }
+      if(grepl("unidentified",tax_table_2[i,j])){
+            print(tax_table_2[i,j])
+            tax_table_2[i,j] <- "uncultured"
+        }
+    }
+}
+```
+
+```{r}
+otu_mat <- as.matrix(data_genus[,-c(1,2)])
+rownames(otu_mat) <- data_genus$ID
+colnames(otu_mat) <- paste0("Otu",1:ncol(otu_mat))
+write.csv(otu_mat, "processing/data_count_microbiome.csv")
+
+tax_mat <- tax_table_2
+rownames(tax_mat) <- paste0("Otu",1:nrow(tax_mat))
+tax_mat <- as.matrix(tax_mat)
+```
+
+```{r}
+samples_table$Transm_mode <- as.factor(samples_table$Transm_mode)
+samples_table$METS <- as.factor(samples_table$METS)
+samples_table$hypertension <- as.factor(samples_table$hypertension)
+samples_table$central_obesity <- as.factor(samples_table$central_obesity)
+rownames(samples_table) <- samples_table$X
+samples_table$X <- NULL
+```
+
+```{r}
+OTU = otu_table(t(otu_mat), taxa_are_rows = TRUE)
+TAX = tax_table(tax_mat)
+samples = sample_data(samples_table)
+```
+
+```{r}
+carbom <- phyloseq(OTU, TAX, samples)
+carbom
+```
+
+```{r}
+saveRDS(carbom, "processing/model_phyloseq_filted.rds")
+```
+
+## calculate alpha diversity
+```{r}
+table_alpha <- data.frame(matrix(108, 108,1))
+list_measure <- c("Observed", "Chao1", "ACE", "Shannon", "Simpson", "InvSimpson", "Fisher")
+for (x in 1:length(list_measure)) {
+    a <- estimate_richness(carbom, split = TRUE, measures = list_measure[x])
+    table_alpha <- cbind(table_alpha, a)
+}
+
+table_alpha$matrix.108..108..1.
+rownames(table_alpha) <- gsub("X", "",rownames(table_alpha))
+write.csv(table_alpha, "processing/table_alpha_diversity_filtered_model.csv")
+```
+
+```{r}
+table_alpha$X <- rownames(table_alpha)
+table_alpha <- merge(table_alpha, cluster, by = "X", all.x = TRUE)
+table_alpha$matrix.108..108..1. <- NULL
+```
+
+```{r}
+table_alpha$cluster <- as.factor(table_alpha$cluster)
+```
+
+```{r}
+table_alpha$cluster <- factor(table_alpha$cluster, levels = c("Ctrl", 1, 2, 3))
+write.csv(table_alpha, "processing/table_alpha_diversity_filtered_model_clusters.csv")
+```
+
+```{r}
+for (i in 2:10) {
+  table_1 <- table_alpha[,c(i, 11)]
+  a <- ggplot(table_1, aes(x = cluster, y = table_1[,1], fill = cluster, color = cluster)) + 
+    geom_boxplot(position=position_dodge(1), size = 0.5, alpha =0.8, outlier.shape = NA)+ 
+    labs(x="Cluster", y = paste0(names(table_1)[1], ""))+ 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          legend.position="bottom",
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0))) + 
+    geom_jitter(shape=16, size=2, color="black", position=position_jitter(0.05))+ scale_fill_manual(values=col)+ scale_color_manual(values=col_border)
+a
+ggsave(paste0("results/figures_2/boxplots/alpha_diversity_measures_", names(table_1)[1], "_clusters_filtered_model.pdf"), height = 4, width = 3)
+  print(i)
+}
+```
+## calculate Beta diversity
+
+```{r}
+ord = ordinate(carbom, method="NMDS", distance = "bray")
+
+a <- plot_ordination(carbom, ord, color = "cluster", shape="Test") + 
+  geom_point(size=6) + scale_color_manual(values=c(col[2:4], col[1]))+
+  stat_ellipse()+ theme_bw() + 
+    theme(axis.title.x = element_text(size=16, color="black"),
+          axis.title.y = element_text(size=16, color="black"),
+          axis.text = element_text(color="black",size=16),
+          axis.text.x =element_text(color="black",size=16),
+          strip.text.x = element_text(size = 9,color="black"),
+          plot.title = element_text(hjust = 0.5, size = 20, vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)))
+
+a
+ggsave("results/figures/beta_diversity_plot_3_clusters_HC.pdf")
+```
+```{r}
+mds1 <- data.frame(X = rownames(ord$points), NMDS1 = ord$points[,1])
+mds1 <- merge(cluster, mds1, by = "X")
+mds1$cluster <- factor(mds1$cluster, levels = c("Ctrl", 1, 2, 3))
+write.csv(mds1, "processing/NMDS1_microbiome.csv")
+
+b <- ggplot(mds1, aes(x=NMDS1, y=cluster, fill=cluster, color = cluster)) +
+    geom_jitter(color = "black") + 
+  geom_boxplot(position=position_dodge(1), size = 0.5, alpha =0.8, outlier.shape = NA) + theme_bw() + 
+    theme(axis.title.x = element_text(size=16, color="black"),
+          axis.title.y = element_text(size=16, color="black"),
+          axis.text = element_text(color="black",size=16),
+          axis.text.x =element_text(color="black",size=16),
+          strip.text.x = element_text(size = 9,color="black"),
+          plot.title = element_text(hjust = 0.5, size = 20, vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)), legend.position = "none")+ xlab("NMDS1") + ylab("Cluster")+ scale_fill_manual(values=col)+ scale_color_manual(values=col_border)
+b
+ggsave("results/figures/beta_diversity_measures_clusters_3_NMDS1_HC.pdf", height = 5, width = 4)
+```
+
+```{r}
+mds2 <- data.frame(X = rownames(ord$points), NMDS2 = ord$points[,2])
+mds2 <- merge(cluster, mds2, by = "X")
+mds2$cluster <- factor(mds2$cluster, levels = c("Ctrl", 1, 2, 3))
+write.csv(mds2, "processing/NMDS1_microbiome.csv")
+
+c <- ggplot(mds2, aes(y=NMDS2, x=cluster, fill=cluster, color = cluster)) +
+    geom_jitter(color = "black") + 
+  geom_boxplot(position=position_dodge(1), size = 0.5, alpha =0.8, outlier.shape = NA) + theme_bw() + 
+    theme(axis.title.x = element_text(size=16, color="black"),
+          axis.title.y = element_text(size=16, color="black"),
+          axis.text = element_text(color="black",size=16),
+          axis.text.x =element_text(color="black",size=16),
+          strip.text.x = element_text(size = 9,color="black"),
+          plot.title = element_text(hjust = 0.5, size = 20, vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)), legend.position = "none")+ ylab("NMDS2") + xlab("Cluster")+ scale_fill_manual(values=col)+ scale_color_manual(values=col_border)
+ggsave("results/figures/beta_diversity_measures_clusters_3_NMDS2_HC.pdf", height = 5, width = 4)
+c
+```
+
+
+```{r}
+d <- ggplot() + 
+    theme(axis.title.x = element_text(size=16, color="black"),
+          axis.title.y = element_text(size=16, color="black"),
+          axis.text = element_text(color="black",size=16),
+          axis.text.x =element_text(color="black",size=16),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)), legend.position = "none")
+```
+```{r}
+list_figures <- list(b, a,c, d)
+```
+```{r}
+j <- matrix(nrow = 10, ncol = 10)
+j[1:2,1:8] <- 1
+j[3:10,1:8] <- 2
+j[3:10,9:10] <- 3
+j[is.na(j)] <- 4
+```
+
+```{r}
+pdf("results/figures_2/beta_diversity_3_clusters.pdf", height = 10, width = 10)
+grid.arrange(grobs = list_figures, layout_matrix = j)
+dev.off()
+```
+
+## make barplot based on NMDS
+
+```{r}
+relative_abundance_table <- merge(mds1, data_family_2, by = "X")
+relative_abundance_table <- relative_abundance_table[relative_abundance_table$cluster != "Ctrl",]
+rownames(relative_abundance_table) <-relative_abundance_table$X
+relative_abundance_table$X <- NULL
+relative_abundance_table <- relative_abundance_table[order(relative_abundance_table$NMDS1),]
+
+cluster_label <- rownames(relative_abundance_table)
+
+relative_abundance_table_2 <- data.frame(t(relative_abundance_table[,-c(1,2)]))
+colnames(relative_abundance_table_2) <- rownames(relative_abundance_table)
+relative_abundance_table_2$Names <- rownames(relative_abundance_table_2)
+relative_abundance_table_2$Names <- ifelse(rowSums(relative_abundance_table_2[,-98]) > 1, relative_abundance_table_2$Names, "Other")
+
+x <- c(relative_abundance_table_2$Names[relative_abundance_table_2$Names != "Other"], "Other")
+relative_abundance_table_2$Names <- factor(relative_abundance_table_2$Names, levels = x)
+
+col1 <- c(color_phylym[c(1:12)],"#e5e5e5")
+
+relative_abundance_table_2 <- melt(relative_abundance_table_2, id.vars = "Names")
+names(relative_abundance_table_2)[2] <- "X"
+
+c1 <- cluster[cluster$cluster == 1,]
+c2 <- cluster[cluster$cluster == 2,]
+c3 <- cluster[cluster$cluster == 3,]
+
+relative_abundance_table_3_1 <- relative_abundance_table_2[relative_abundance_table_2$X %in% c1$X,]
+relative_abundance_table_3_2 <- relative_abundance_table_2[relative_abundance_table_2$X %in% c2$X,]
+relative_abundance_table_3_3 <- relative_abundance_table_2[relative_abundance_table_2$X %in% c3$X,]
+
+m2 <- ggplot(relative_abundance_table_3_1, aes(fill=Names, y=value, x=X))+ 
+    geom_bar(position="fill", stat="identity", alpha= 0.6)+ylab("Relative abundance")+ theme_classic()+ 
+    theme(
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 7,color="black"),
+          legend.position="bottom")+
+  theme(plot.margin=unit(c(0,1,1.5,1.2),"cm"), legend.key.size = unit(0.5, 'cm'), legend.text=element_text(size=6))+scale_fill_manual(values = col1)
+
+m2
+ggsave("results/figures_2/family_barplot_clusters_1.pdf")
+
+m2 <- ggplot(relative_abundance_table_3_2, aes(fill=Names, y=value, x=X))+ 
+    geom_bar(position="fill", stat="identity", alpha= 0.6)+ylab("Relative abundance")+ theme_classic()+ 
+    theme(
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 7,color="black"),
+          legend.position="bottom")+
+  theme(plot.margin=unit(c(0,1,1.5,1.2),"cm"), legend.key.size = unit(0.5, 'cm'), legend.text=element_text(size=6))+scale_fill_manual(values = col1)
+
+m2
+ggsave("results/figures_2/family_barplot_clusters_2.pdf")
+
+m2 <- ggplot(relative_abundance_table_3_3, aes(fill=Names, y=value, x=X))+ 
+    geom_bar(position="fill", stat="identity", alpha= 0.6)+ylab("Relative abundance")+ theme_classic()+ 
+    theme(
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 7,color="black"),
+          legend.position="bottom")+
+  theme(plot.margin=unit(c(0,1,1.5,1.2),"cm"), legend.key.size = unit(0.5, 'cm'), legend.text=element_text(size=6))+scale_fill_manual(values = col1)
+
+m2
+ggsave("results/figures_2/family_barplot_clusters_3.pdf")
+
+```
+
+
+```{r}
+relative_abundance_table <- merge(mds1, data_family_2, by = "X")
+relative_abundance_table <- relative_abundance_table[relative_abundance_table$cluster != "Ctrl",]
+rownames(relative_abundance_table) <-relative_abundance_table$X
+relative_abundance_table$X <- NULL
+relative_abundance_table <- relative_abundance_table[order(relative_abundance_table$NMDS1),]
+
+cluster_label <- rownames(relative_abundance_table)
+
+relative_abundance_table_2 <- data.frame(t(relative_abundance_table[,-c(1,2)]))
+colnames(relative_abundance_table_2) <- rownames(relative_abundance_table)
+relative_abundance_table_2$Names <- rownames(relative_abundance_table_2)
+relative_abundance_table_2$Names <- ifelse(rowSums(relative_abundance_table_2[,-98]) > 1, relative_abundance_table_2$Names, "Other")
+
+x <- c(relative_abundance_table_2$Names[relative_abundance_table_2$Names != "Other"], "Other")
+relative_abundance_table_2$Names <- factor(relative_abundance_table_2$Names, levels = x)
+
+col1 <- c(color_phylym[c(1:12)],"#e5e5e5")
+
+relative_abundance_table_2 <- melt(relative_abundance_table_2, id.vars = "Names")
+
+
+m2 <- ggplot(relative_abundance_table_2, aes(fill=Names, y=value, x=variable)) + 
+    geom_bar(position="fill", stat="identity", alpha= 0.6)+ylab("Relative abundance")+ theme_classic()+ 
+    theme(
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 7,color="black"),
+          legend.position="bottom")+
+  theme(plot.margin=unit(c(0,1,1.5,1.2),"cm"), legend.key.size = unit(0.5, 'cm'), legend.text=element_text(size=6))+scale_fill_manual(values = col1)
+
+m2
+ggsave("results/figures_2/family_barplot_NMDS1.pdf")
+
+```
+
+col = list(bar = c("a" = "red", "b" = "green", "c" = "blue"))
+GENDER, X3rd_Drug, CD4
+
+```{r}
+cluster_label_2 <- data.frame(X = cluster_label)
+cluster_label_2 <- merge(cluster_label_2, clinical, by = "X")
+cluster_label_2 <- merge(cluster_label_2, cluster, by = "X")
+cluster_label_2 <- cluster_label_2[match(cluster_label, cluster_label_2$X),]
+
+
+library(ComplexHeatmap)
+pdf("results/figures_2/cluster_heatmap.pdf", width = 12)
+# take the first heatmap annotation as a normal heatmap (one-row heatmap)
+Heatmap(rbind(1:97), height = unit(1, "mm"), show_column_dend = FALSE,
+	top_annotation = HeatmapAnnotation(cluster = rev(cluster_label_2$cluster),
+	                                   MetS = rev(as.factor(cluster_label_2$METS)),
+	                                   hypertension = rev(as.factor(cluster_label_2$hypertension)),
+	                                   BMI = rev(as.factor(cluster_label_2$BMI_cat)),
+	                                   CD4 = rev(cluster_label_2$CD4),
+	                                   Transmission = rev(as.factor(cluster_label_2$Transm_mode)),
+	                                   Gender = rev(as.factor(cluster_label_2$GENDER)),
+	                                   X3rd_drug = rev(as.factor(cluster_label_2$X3rd_Drug)),
+	                                   Age = rev(cluster_label_2$AGE),
+	                                   First_drug = rev(cluster_label_2$Combined_therapy),
+	                                   col = list(cluster = c("1" = col[2], "2" = col[3], "3" = col[4])),
+	                                   MetS = list(c("0" == "white", "1" == "yellow")),
+	                                   hypertension = list(c("0" == "white", "1" == "red")),
+	                                   BMI = list(c("normal" == "green", "overweight" == "orange", "obese" == "red"))))
+dev.off()
+```
+

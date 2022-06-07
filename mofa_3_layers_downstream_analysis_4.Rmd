@@ -1,0 +1,1024 @@
+---
+title: "Feature selection using MOFA"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+
+
+```{r}
+library(xlsx)
+library(dplyr)
+library(circlize)
+library(MOFA2)
+library(compositions)
+```
+
+
+```{r}
+conv_met <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/biochemical_super_path.csv")
+names(conv_met)[1] <- "met"
+conv_lip <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/lipids_superpathways.csv")
+names(conv_lip)[1] <- "item"
+tax_table <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/tax_table_COCOMO.csv")
+tax_table <- select(tax_table, X, Division, Family, Genus)
+names(tax_table)[1] <- "item"
+```
+
+# Background
+## Factors
+MOFA factors capture the global sources of variability in the data. Mathematically, each factor ordinates cells along a one-dimensional axis centered at zero. The value per se is not interpretable, only the relative positioning of samples is important. Samples with different signs manifest opposite “effects” along the inferred axis of variation, with higher absolute value indicating a stronger effect. Note that the interpretation of factors is analogous to the interpretation of the principal components in PCA.
+
+## Weights
+Weights provide a score for how strong each feature relates to each factor, hence allowing a biological interpretation of the latent factors. Features with no as- sociation with the factor have values close to zero, while genes with strong association with the factor have large absolute values. The sign of the weight indicates the direction of the effect: a positive weight indicates that the feature has higher levels in the cells with positive factor values, and vice versa
+
+## Use of covariates
+We extensively tested this functionality and it was not yielding good results. The reason is that covariates are usually discrete labels that do not reflect the underlying molecular biology. For example, if you introduce age as a covariate, but the actual age is different from the molecular age, the model will simply learn a new factor that corresponds to this latent molecular age, and it will drop the covariate from the model. We recommend that you learn the factors in a completely unsupervised manner and then relate them to the biological covariates a posteriori (see vignettes). If your covariate of interest is an important driver of variability, do not worry, MOFA will find it!
+
+
+# Analysis
+
+```{r}
+name_ana <- "microbiome_project"
+```
+
+```{r}
+library(xlsx)
+library(dplyr)
+library(SNFtool)
+library(ROCR)
+library(cvAUC)
+library(circlize)
+library(MOFA2)
+library("rhdf5")
+library(ComplexHeatmap)
+library(ggplot2)
+```
+```{r}
+col <- c("#6b8150", "#2273C3","#EFC144","#868686")
+#col_border <- darken(col, 0.5)
+```
+
+```{r}
+cluster <- read.csv("processing/cluster_SNF_3_omics_3_clusters_plusHC.csv")
+cluster <- cluster[!is.na(cluster$cluster),]
+cluster$X <- NULL
+names(cluster)[2] <- "X"
+```
+
+## load clinical
+```{r}
+clinical <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/clinical_data_microbiome_project.csv")
+clinical$Combined_therapy <- gsub("\\/.*", "", clinical$Combined_therapy)
+clinical$Combined_therapy <- ifelse(clinical$Combined_therapy %in% c("ABC", "AZT", "TAF", "TDF"), clinical$Combined_therapy, "Others")
+clinical_data <- merge(cluster, clinical, by = "X")
+clinical_data$CD4_CD8 <- NA
+clinical_data$CD4_CD8 <- clinical_data$CD4/clinical_data$CD8
+clinical_data <- select(clinical_data, X, cluster, hypertension, Transm_mode, VAT, SAT, CD4_CD8, METS, AGE, BMI, Combined_therapy, X3rd_Drug, GENDER)
+names(clinical_data)[1] <- "sample"
+clinical_data$group <- "group1"
+clinical_data$cluster <- paste0("C", clinical_data$cluster)
+
+```
+
+
+## Load data
+```{r}
+data_lip <- read.csv("data/clp_lipidomics_data.csv")
+data_met <- read.csv("data/cocomo_norm_data_filt.csv")
+data_met <- data_met[data_met$SUPER.PATHWAY !="",]
+```
+
+## lipidome
+```{r}
+data_lip <- data_lip[data_lip$SUPER_PATHWAY !="",]
+data_lip <- data_lip[,c(1, 9:228)]
+names(data_lip) <- gsub("X", "", names(data_lip))
+lip <- data_lip$BIOCHEMICAL
+data_lip <- data.frame(t(data_lip[,-1]))
+colnames(data_lip) <- lip
+grep("Total", colnames(data_lip))
+data_lip <- data_lip[rownames(data_lip) %in% clinical_data$sample, ]
+data_lip <- data_lip[,1:963]
+grep("Total", colnames(data_lip))
+data_lip <- log2(data_lip)
+#data_lip <- data.frame(t(scale(t(data_lip), scale = TRUE)))
+#data_lip <- data_lip[, sapply(data_lip, var) > 0.05]
+```
+
+## metabolome
+```{r}
+data_met <- data_met[,c(1,13:232)]
+names(data_met)[-1] <- gsub("X", "", names(data_met)[-1])
+met <- data_met$BIOCHEMICAL
+data_met <- data.frame(t(data_met[,-1]))
+colnames(data_met) <- met
+data_met <- data_met[rownames(data_met) %in% clinical_data$sample, ]
+data_met <- log2(data_met)
+#data_met <- data.frame(t(scale(t(data_met), scale = TRUE)))
+#data_met <- data_met[, sapply(data_met, var) > 0.05]
+data_met <- data_met[order(match(rownames(data_met), rownames(data_lip))), ]
+```
+
+
+## microbiome
+```{r}
+data_mi <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/data_count_microbiome.csv")
+rownames(data_mi) <- data_mi$X
+data_mi$X <- NULL
+rownames(data_mi) <- gsub("X","",rownames(data_mi))
+data_mi <- data_mi[rownames(data_mi) %in% rownames(data_lip), ]
+data_mi <- data.frame(clr(data_mi))
+#data_mi <- data.frame(t(scale(t(data_mi), scale = FALSE)))
+data_mi <- data_mi[, sapply(data_mi, var) > 0.2]
+data_mi <- data_mi[order(match(rownames(data_mi), rownames(data_lip))), ]
+```
+
+
+```{r}
+convert_met <- data.frame(met = colnames(data_met), nb = paste0("Met", 1:ncol(data_met)))
+colnames(data_met) <- convert_met$nb
+```
+
+
+## load model (made using defaults parameters)
+```{r}
+MOFAobject <- load_model("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/mofa_model_4")
+```
+
+
+## add metadata
+```{r}
+# Sanity check
+stopifnot(all(sort(clinical_data$sample)==sort(unlist(samples_names(MOFAobject)))))
+
+# Add sample metadata to the model
+samples_metadata(MOFAobject) <- clinical_data
+```
+
+## Model overview.
+```{r}
+plot_data_overview(MOFAobject)
+pdf("results/figures_2/MOFA_overview_model_4.pdf")
+plot_data_overview(MOFAobject)
+dev.off()
+```
+ ==> no missing values --> correct numbers of feactures and samples
+
+## correlation factors
+Verify that the Factors are largely uncorrelated
+```{r}
+plot_factor_cor(MOFAobject)
+pdf("results/figures_2/correlation_factors_model_4.pdf")
+plot_factor_cor(MOFAobject)
+dev.off()
+```
+
+## variance decomposition by factor
+Percentage of variance explained by each factor across each data modality
+Lipids --> factors 1, 2, 3, 5, 7, 8
+Metabolites --> factors 4, 6
+```{r}
+plot_variance_explained(MOFAobject)
+pdf("results/figures_2/MOFA_variance_model_4.pdf")
+plot_variance_explained(MOFAobject)
+dev.off()
+```
+## Total variance
+model is providing a good fit to the data
+```{r}
+plot_variance_explained(MOFAobject, plot_total = T)[[2]]
+pdf("results/figures_2/MOFA_variance_modeL_4_2.pdf")
+plot_variance_explained(MOFAobject, plot_total = T)[[2]]
+dev.off()
+```
+## checking model / percentage variance per factor
+```{r}
+MOFAobject@cache
+```
+## Association factors / clinical parameters
+VAT : factors 1, 3, 13, 14
+Transmission mode : 7, 13
+hypertension : 15
+
+
+cluster, hypertension, Transm_mode, VAT, SAT, CD4, METS, AGE, BMI, first_drug, X3rd_Drug, GENDER
+```{r}
+correlate_factors_with_covariates(MOFAobject, 
+  covariates = c("cluster", "hypertension", "Transm_mode", "VAT", "SAT","CD4_CD8", "METS", "AGE", "BMI", "Combined_therapy", "GENDER", "X3rd_Drug"), 
+  plot="log_pval"
+)
+
+pdf("results/figures_2/MOFA_covariate_association_model_4.pdf")
+correlate_factors_with_covariates(MOFAobject, 
+  covariates = c("cluster", "hypertension", "Transm_mode", "VAT", "SAT","CD4_CD8", "METS", "AGE", "BMI", "GENDER"), 
+  plot="log_pval"
+)
+dev.off()
+```
+```{r}
+
+```
+
+## relationship clinical data and latent factors
+```{r}
+factors <- data.frame(sample = rownames(MOFAobject@expectations$Z$group1), MOFAobject@expectations$Z$group1)
+factors_clinical <- merge(clinical_data, factors, by = "sample")
+total_regression_table <- as.data.frame(matrix(0,nrow=0,ncol=7))
+colnames(total_regression_table) <- c("Clinical_parameter","Factor","Estimate","StdError","tStat","pvalue", "padjust")
+
+for (i in 2:13) {
+  for(j in 15:29){
+    plm <- as.data.frame(matrix(0,nrow=1,ncol=6))
+    colnames(plm) <- c("Clinical_parameter","Factor","Estimate","StdError","tStat","pvalue")
+    plm[1, 1] <- names(factors_clinical)[j]
+    plm[1, 2] <- names(factors_clinical)[i]
+    plm[1,3:6] <- coef(summary(lm(factors_clinical[,j] ~ factors_clinical[,i], data = factors_clinical)))[2,]
+    plm$padjust <- p.adjust(plm$pvalue,method="BH")
+    total_regression_table <- rbind(total_regression_table, plm)
+  }
+}
+
+sigplm <- total_regression_table[total_regression_table$padjust<0.1,] #look only at those with adjusted p.value < 0.05
+
+
+write.csv(sigplm, "processing/association_clinical_MOFA_latent_factors.csv")
+```
+
+### plot weight distribution
+```{r}
+pdf("results/figures_2/weight_distribution_factors.pdf")
+ggplot(data.frame(MOFAobject@expectations$W$Lipids), aes(x=Factor1)) + 
+    geom_histogram(aes(y=..density..),      # Histogram with density instead of count on y-axis
+                   binwidth=.01,
+                   colour="black", fill="white") +
+    geom_density(alpha=.2, fill="#FF6666")+ggtitle("Lipids Factor 1 weights distribution")
+
+ggplot(data.frame(MOFAobject@expectations$W$Lipids), aes(x=Factor2)) + 
+    geom_histogram(aes(y=..density..),      # Histogram with density instead of count on y-axis
+                   binwidth=.01,
+                   colour="black", fill="white") +
+    geom_density(alpha=.2, fill="#FF6666")+ggtitle("Lipids Factor 2 weights distribution")
+
+ggplot(data.frame(MOFAobject@expectations$W$Metabolites), aes(x=Factor3)) + 
+    geom_histogram(aes(y=..density..),      # Histogram with density instead of count on y-axis
+                   binwidth=.01,
+                   colour="black", fill="white") +
+    geom_density(alpha=.2, fill="#FF6666")+ggtitle("Metabolites Factor 1 weights distribution")
+
+ggplot(data.frame(MOFAobject@expectations$W$Metabolites), aes(x=Factor1)) + 
+    geom_histogram(aes(y=..density..),      # Histogram with density instead of count on y-axis
+                   binwidth=.01,
+                   colour="black", fill="white") +
+    geom_density(alpha=.2, fill="#FF6666")+ggtitle("Metabolites Factor 1 weights distribution")
+
+ggplot(data.frame(MOFAobject@expectations$W$Metabolites), aes(x=Factor2)) + 
+    geom_histogram(aes(y=..density..),      # Histogram with density instead of count on y-axis
+                   binwidth=.01,
+                   colour="black", fill="white") +
+    geom_density(alpha=.2, fill="#FF6666")+ggtitle("Metabolites Factor 2 weights distribution")
+
+ggplot(data.frame(MOFAobject@expectations$W$Metabolites), aes(x=Factor3)) + 
+    geom_histogram(aes(y=..density..),      # Histogram with density instead of count on y-axis
+                   binwidth=.01,
+                   colour="black", fill="white") +
+    geom_density(alpha=.2, fill="#FF6666")+ggtitle("Metabolites Factor 2 weights distribution")
+
+ggplot(data.frame(MOFAobject@expectations$W$Microbiome), aes(x=Factor1)) + 
+    geom_histogram(aes(y=..density..),      # Histogram with density instead of count on y-axis
+                   binwidth=.001,
+                   colour="black", fill="white") +
+    geom_density(alpha=.2, fill="#FF6666")+ggtitle("Microbiome Factor 1 weights distribution")
+
+ggplot(data.frame(MOFAobject@expectations$W$Microbiome), aes(x=Factor2)) + 
+    geom_histogram(aes(y=..density..),      # Histogram with density instead of count on y-axis
+                   binwidth=.001,
+                   colour="black", fill="white") +
+    geom_density(alpha=.2, fill="#FF6666")+ggtitle("Microbiome Factor 2 weights distribution")
+
+ggplot(data.frame(MOFAobject@expectations$W$Microbiome), aes(x=Factor3)) + 
+    geom_histogram(aes(y=..density..),      # Histogram with density instead of count on y-axis
+                   binwidth=.001,
+                   colour="black", fill="white") +
+    geom_density(alpha=.2, fill="#FF6666")+ggtitle("Microbiome Factor 2 weights distribution")
+
+dev.off()
+```
+
+
+
+## checking weigths features
+lip_f1 <- MOFAobject@expectations$W$Lipids[abs(MOFAobject@expectations$W$Lipids[,1]) > 0.08,]
+met_f1 <- MOFAobject@expectations$W$Metabolites[abs(MOFAobject@expectations$W$Metabolites[,1]) > 0.08,]
+mic_f1 <- MOFAobject@expectations$W$Microbiome[abs(MOFAobject@expectations$W$Microbiome[,1]) > 0.08,]
+
+lip_f2 <- MOFAobject@expectations$W$Lipids[abs(MOFAobject@expectations$W$Lipids[,2]) > 0.08,]
+met_f2 <- MOFAobject@expectations$W$Metabolites[abs(MOFAobject@expectations$W$Metabolites[,2]) > 0.08,]
+mic_f2 <- MOFAobject@expectations$W$Microbiome[abs(MOFAobject@expectations$W$Microbiome[,2]) > 0.08,]
+
+lip_f5 <- MOFAobject@expectations$W$Lipids[abs(MOFAobject@expectations$W$Lipids[,5]) > 0.08,]
+met_f5 <- MOFAobject@expectations$W$Metabolites[abs(MOFAobject@expectations$W$Metabolites[,5]) > 0.08,]
+mic_f5 <- MOFAobject@expectations$W$Microbiome[abs(MOFAobject@expectations$W$Microbiome[,5]) > 0.08,]
+
+## extract all features
+```{r}
+list_lip <- MOFAobject@expectations$W$Lipids
+list_met <- MOFAobject@expectations$W$Metabolites
+list_mic <- MOFAobject@expectations$W$Microbiome
+```
+
+
+## extract upper and lower quantiles
+```{r}
+lip_f1 <- MOFAobject@expectations$W$Lipids[MOFAobject@expectations$W$Lipids[,1] > quantile(MOFAobject@expectations$W$Lipids[,1], .95) | 
+  MOFAobject@expectations$W$Lipids[,1] < quantile(MOFAobject@expectations$W$Lipids[,1], .05), ]
+met_f1 <- MOFAobject@expectations$W$Metabolites[MOFAobject@expectations$W$Metabolites[,1] > quantile(MOFAobject@expectations$W$Metabolites[,1], .95) | 
+  MOFAobject@expectations$W$Metabolites[,1] < quantile(MOFAobject@expectations$W$Metabolites[,1], .05),]
+mic_f1 <- MOFAobject@expectations$W$Microbiome[MOFAobject@expectations$W$Microbiome[,1] > quantile(MOFAobject@expectations$W$Microbiome[,1], .95) | 
+  MOFAobject@expectations$W$Microbiome[,1] < quantile(MOFAobject@expectations$W$Microbiome[,1], .25),]
+
+
+lip_f2 <- MOFAobject@expectations$W$Lipids[MOFAobject@expectations$W$Lipids[,2] > quantile(MOFAobject@expectations$W$Lipids[,2], .95) | 
+  MOFAobject@expectations$W$Lipids[,2] < quantile(MOFAobject@expectations$W$Lipids[,2], .05), ]
+met_f2 <- MOFAobject@expectations$W$Metabolites[MOFAobject@expectations$W$Metabolites[,2] > quantile(MOFAobject@expectations$W$Metabolites[,2], .95) | 
+  MOFAobject@expectations$W$Metabolites[,2] < quantile(MOFAobject@expectations$W$Metabolites[,2], .05),]
+mic_f2 <- MOFAobject@expectations$W$Microbiome[MOFAobject@expectations$W$Microbiome[,2] > quantile(MOFAobject@expectations$W$Microbiome[,2], .95) | 
+  MOFAobject@expectations$W$Microbiome[,2] < quantile(MOFAobject@expectations$W$Microbiome[,2], .05),]
+
+
+lip_f3 <- MOFAobject@expectations$W$Lipids[MOFAobject@expectations$W$Lipids[,3] > quantile(MOFAobject@expectations$W$Lipids[,3], .95) | 
+  MOFAobject@expectations$W$Lipids[,3] < quantile(MOFAobject@expectations$W$Lipids[,3], .05), ]
+met_f3 <- MOFAobject@expectations$W$Metabolites[MOFAobject@expectations$W$Metabolites[,3] > quantile(MOFAobject@expectations$W$Metabolites[,3], .95) | 
+  MOFAobject@expectations$W$Metabolites[,3] < quantile(MOFAobject@expectations$W$Metabolites[,3], .05),]
+mic_f3 <- MOFAobject@expectations$W$Microbiome[MOFAobject@expectations$W$Microbiome[,3] > quantile(MOFAobject@expectations$W$Microbiome[,3], .95) | 
+  MOFAobject@expectations$W$Microbiome[,3] < quantile(MOFAobject@expectations$W$Microbiome[,3], .05),]
+
+
+lip_f5 <- MOFAobject@expectations$W$Lipids[MOFAobject@expectations$W$Lipids[,5] > quantile(MOFAobject@expectations$W$Lipids[,5], .95) | 
+  MOFAobject@expectations$W$Lipids[,5] < quantile(MOFAobject@expectations$W$Lipids[,5], .05), ]
+met_f5 <- MOFAobject@expectations$W$Metabolites[MOFAobject@expectations$W$Metabolites[,5] > quantile(MOFAobject@expectations$W$Metabolites[,5], .95) | 
+  MOFAobject@expectations$W$Metabolites[,5] < quantile(MOFAobject@expectations$W$Metabolites[,5], .05),]
+mic_f5 <- MOFAobject@expectations$W$Microbiome[MOFAobject@expectations$W$Microbiome[,5] > quantile(MOFAobject@expectations$W$Microbiome[,5], .95) | 
+  MOFAobject@expectations$W$Microbiome[,5] < quantile(MOFAobject@expectations$W$Microbiome[,5], .05),]
+
+lip_f8 <- MOFAobject@expectations$W$Lipids[MOFAobject@expectations$W$Lipids[,8] > quantile(MOFAobject@expectations$W$Lipids[,8], .95) | 
+  MOFAobject@expectations$W$Lipids[,8] < quantile(MOFAobject@expectations$W$Lipids[,8], .05), ]
+met_f8 <- MOFAobject@expectations$W$Metabolites[MOFAobject@expectations$W$Metabolites[,8] > quantile(MOFAobject@expectations$W$Metabolites[,8], .95) | 
+  MOFAobject@expectations$W$Metabolites[,8] < quantile(MOFAobject@expectations$W$Metabolites[,8], .05),]
+mic_f8 <- MOFAobject@expectations$W$Microbiome[MOFAobject@expectations$W$Microbiome[,8] > quantile(MOFAobject@expectations$W$Microbiome[,8], .95) | 
+  MOFAobject@expectations$W$Microbiome[,8] < quantile(MOFAobject@expectations$W$Microbiome[,8], .05),]
+```
+
+## heatmap with everything
+
+```{r}
+col_fun1 = colorRamp2(c(-6,-2,-1, 0,1,2,6), c("#7F7F00","#B2B200" ,"#E5E500","white","#BF7FBF","#993299","#590059"))
+```
+
+```{r}
+library(reshape2)
+lip <- data.frame(MOFAobject@expectations$W$Lipids)
+lip <- select(lip, Factor1, Factor2, Factor3, Factor5, Factor8)
+lip$Item <- rownames(lip)
+lip <- melt(lip, id.vars = c("Item"))
+lip_3 <- lip
+lip$value <- abs(lip$value)
+lip <- lip[order(lip$value, decreasing = TRUE),]
+lip <- lip[1:20,]
+lip_2 <- lip_3[lip_3$Item %in% lip$Item & lip_3$variable %in% lip$variable,]
+
+lip <- data.frame(MOFAobject@expectations$W$Metabolites)
+lip <- select(lip, Factor1, Factor2, Factor3, Factor5, Factor8)
+lip$Item <- rownames(lip)
+lip <- melt(lip, id.vars = c("Item"))
+lip_3 <- lip
+lip$value <- abs(lip$value)
+lip <- lip[order(lip$value, decreasing = TRUE),]
+lip <- lip[1:20,]
+met_2 <- lip_3[lip_3$Item %in% lip$Item & lip_3$variable %in% lip$variable,]
+
+lip <- data.frame(MOFAobject@expectations$W$Microbiome)
+lip <- select(lip, Factor1, Factor2, Factor3, Factor5, Factor8)
+lip$Item <- rownames(lip)
+lip <- melt(lip, id.vars = c("Item"))
+lip_3 <- lip
+lip$value <- abs(lip$value)
+lip <- lip[order(lip$value, decreasing = TRUE),]
+lip <- lip[1:20,]
+mic_2 <- lip_3[lip_3$Item %in% lip$Item & lip_3$variable %in% lip$variable,]
+```
+
+
+```{r}
+selection_items <- c(rownames(lip_f1), rownames(met_f1), rownames(mic_f1), 
+                                      rownames(lip_f2), rownames(met_f2), rownames(mic_f2), 
+                                      rownames(lip_f3), rownames(met_f3), rownames(mic_f3), 
+                                      rownames(lip_f5), rownames(met_f5), rownames(mic_f5), 
+                                      rownames(lip_f8), rownames(met_f8), rownames(mic_f8)
+                                      )
+
+table_items <- data.frame(item = unique(selection_items))
+table_items$type <- "Lip"
+table_items$type <-  ifelse(grepl("Met", table_items$item), "Met", table_items$type)
+table_items$type <-  ifelse(grepl("Otu", table_items$item), "Otu", table_items$type)
+
+names(convert_met)[2] <- "item"
+table_items <- merge(table_items, convert_met, all.x = TRUE, by = "item")
+table_items <- merge(table_items, conv_lip, all.x = TRUE, by = "item")
+table_items <- merge(table_items, tax_table, all.x = TRUE, by = "item")
+table_items <- merge(table_items, conv_met, all.x = TRUE, by = "met")
+table_items$names <- NA
+
+table_items$names[table_items$item %in% lip_2$Item] <- table_items$item[table_items$item %in% lip_2$Item]
+table_items$names[table_items$item %in% met_2$Item] <- table_items$met[table_items$item %in% met_2$Item]
+table_items$names[table_items$item %in% mic_2$Item] <- table_items$Genus[table_items$item %in% mic_2$Item]
+```
+## 
+```{r}
+imp <- rbind(lip_2, met_2, mic_2)
+names(convert_met)[2] <- "Item"
+imp <- merge(imp, convert_met, by = "Item", all.x = TRUE)
+names(tax_table)[1] <- "Item"
+imp <- merge(imp, tax_table, all.x = TRUE, by = "Item")
+imp$type <- NA
+imp$type[grepl("Met", imp$Item)] <- "met"
+imp$type[grepl("Otu", imp$Item)] <- "otu"
+imp$type[is.na(imp$type)] <- "lip"
+imp$Item[grepl("Met", imp$Item)] <- imp$met[grepl("Met", imp$Item)]
+
+imp$Item[grepl("Otu", imp$Item)] <- imp$Division[grepl("Otu", imp$Item)]
+```
+
+
+## bubble plot
+ 	 	
+```{r}
+imp <- imp[!imp$Item %in% c("uncultured", "."),]
+imp <- imp[order(abs(imp$value), decreasing = TRUE),]
+imp <- distinct(imp, Item, variable, .keep_all= TRUE)
+```
+
+```{r}
+dge <- read.delim("processing/processing_microbione_derived_metabolomics_filt.csv", sep = ",")
+m <- imp$met[which(imp$met %in% dge$Metabolite == TRUE)]
+```
+
+```{r}
+
+```
+
+```{r}
+bold.labels <- rep("plain", 61)
+bold.labels[c(38, 33, 29)] <- "bold"
+```
+
+```{r}
+m
+```
+
+```{r}
+ggplot(imp, aes(x = reorder(Item, abs(value)), y = abs(value))) +
+  geom_segment(aes(x = reorder(Item, abs(value)),
+                   xend = reorder(Item, abs(value)),
+                   y = 0, yend = abs(value)),
+               color = "gray", lwd = 1) +
+  geom_point(size = 4, bg = 4, aes(x = reorder(Item, abs(value)), y = abs(value), col = variable, fill = variable, shape = type)) +
+  xlab("Top items") +
+  ylab("") +
+  coord_flip() +
+  theme_minimal()+scale_color_manual(values = c("#4c8577", "#774c85","#85774c", "#8e0000"))+
+  theme(axis.text.y = element_text(face = bold.labels))
+
+ggsave("results/figures/top_20_items_MOFA.pdf", width = 5.5, height = 7)
+```
+
+```{r}
+imp_2 <- imp[reorder(imp$Item, abs(imp$value)), ]
+```
+
+```{r}
+names(conv_met)[1] <- "Item"
+names(conv_lip)[1] <- "Item"
+
+imp_3 <- merge(imp_2, conv_met, by = "Item", all.x = TRUE)
+imp_3 <- merge(imp_3, conv_lip, by = "Item", all.x = TRUE)
+imp_3$group <- NA
+
+imp_3$group[imp_3$type == "lip"] <- imp_3$SUPER_PATHWAY[imp_3$type == "lip"]
+imp_3$group[imp_3$type == "met"] <- imp_3$SUPER.PATHWAY[imp_3$type == "met"]
+imp_3$group[imp_3$type == "otu"] <- imp_3$Division[imp_3$type == "otu"]
+
+imp_4 <- select(imp_3, Item, group)
+```
+```{r}
+mycols_lip <- c("#34558b", "#f0daa4", "#eaac9d", "#798fa8", "#fd823e", "#117893", "#d13b40", "#ffaf12", "#a2553a")
+```
+
+```{r}
+mycols_met <- c("#34558b", "#f0daa4", "#eaac9d", "#798fa8", "#fd823e", "#117893", "#d13b40", "#ffaf12", "#a2553a")
+```
+
+```{r}
+color_phylym <- c("#8b0000","#eb8c00","#f9d62e","#c9df8a","#36802d","#77ab59","#71c7ec","#189ad3","#1ebbd7","#eec1ad","#ff7f50","#e0301e","#e5e5e5", "grey", "blue", "green", "pink")
+```
+```{r}
+unique(imp_4$group)
+```
+
+
+```{r}
+pdf("results/figures/top_MOFA_20_annotation.pdf")
+ha = HeatmapAnnotation(bar = as.factor(imp_4$group), col = list(bar = c("Lipid" = "red",
+                                                                        "Amino Acid" = mycols_met[1],
+                                                                        "Xenobiotics" = mycols_met[2],
+                                                                        "Nucleotide" = mycols_met[3],
+                                                                        "Carbohydrate" = mycols_met[4],
+                                                                        "Cofactors and Vitamins" = mycols_met[5],
+                                                                        
+                                                                        "Bacteroidetes" = color_phylym[6],
+                                                                        "Actinobacteria" = color_phylym[1],
+                                                                        "Cyanobacteria" = color_phylym[2],
+                                                                        "Firmicutes" = color_phylym[3],
+                                                                        "Lentisphaerae" = color_phylym[4],
+                                                                        "Proteobacteria" = color_phylym[5],
+                                                        
+                                                                        "Triacylglycerol" = mycols_lip[1])))
+draw(ha)
+dev.off()
+```
+
+```{r}
+pdf("results/figures_2/heatmap_F1_model_4.pdf")
+ht = Heatmap(matrix(1:61, nrow = 61, ncol = 1), col = col_fun1, right_annotation = rowAnnotation(Class = as.factor(imp_4$group)))
+draw(ht)
+dev.off()
+draw(ht)
+```
+
+```{r}
+table_items$names[!is.na(table_items$names)]
+table_items$names[table_items$names %in% c(".", "uncultured")] <- NA
+```
+
+
+```{r}
+phylum_colors <- c(
+  "#CBD588", "#5F7FC7", "orange","#DA5724", "#508578", "#CD9BCD",
+   "#AD6F3B", "#673770","#D14285", "#652926", "#C84248", 
+  "#8569D5", "#5E738F","#D1A33D", "#8A7C64", "#edf2ef")
+```
+
+```{r}
+mycols_met <- c("#34558b", "#f0daa4", "#eaac9d", "#798fa8", "#fd823e", "#117893", "#d13b40", "#ffaf12", "#a2553a")
+```
+
+
+
+```{r}
+pdf("results/figures_2/heatmap_all_factors_model_4_spearman_distance_2.pdf", width = 15, height = 15)
+data <- cbind(data_met, data_lip, data_mi)
+x <- colnames(data) %in% c(rownames(lip_f1), rownames(met_f1), rownames(mic_f1), 
+                                      rownames(lip_f2), rownames(met_f2), rownames(mic_f2), 
+                                      rownames(lip_f3), rownames(met_f3), rownames(mic_f3), 
+                                      rownames(lip_f5), rownames(met_f5), rownames(mic_f5), 
+                                      rownames(lip_f8), rownames(met_f8), rownames(mic_f8)
+                                      )
+y <- names(data)
+y <- y[x]
+data_2 <- data[,x]
+names(data_2) <- y
+data_2 <- data.frame(t(scale(t(data_2))))
+data_2$X <- rownames(data_2)
+data_2 <- merge(cluster, data_2, by = "X")
+data_3 <- data.frame(t(data_2[,-c(1:2)]))
+data_3$item <- y
+
+data_4 <- merge(table_items, data_3, by = "item", all.y = TRUE)
+data_4$type[is.na(data_4$type)] <- "lip"
+
+
+table_items$SUPER_PATHWAY
+
+n <- c("Erysipelotrichaceae", "Lachnospiraceae", "Muribaculaceae", "Prevotellaceae", "Ruminococcaceae", "Veillonellaceae")
+
+data_4$SUPER_PATHWAY[data_4$SUPER_PATHWAY %in% c("Cholesterol Ester", "Lysophosphatidylethanolamine", "MAG", "Phosphatidylinositol", "Sphingolipids", "Lysophosphatidylcholine")] <- "Other"
+data_4$SUPER.PATHWAY[data_4$SUPER.PATHWAY %in% c("Partially Characterized Molecules", "Energy", "Cofactors and Vitamins", "Nucleotide")] <- "Other"
+data_4$Family[!data_4$Family %in% n & !is.na(data_4$Family)] <- "Other"
+table(data_4$Division)
+data_4$Division[data_4$Division %in% c("Cyanobacteria", "Epsilonbacteraeota", "Lentisphaerae", "Verrucomicrobia")] <- "Other"
+data_4$names[is.na(data_4$names)] <- ""
+
+write.csv(data_4, "processing/extracted_MOFA_features.csv")
+
+data_4$SUPER_PATHWAY <- as.factor(data_4$SUPER_PATHWAY)
+data_4$SUPER.PATHWAY <- as.factor(data_4$SUPER.PATHWAY)
+data_4$Division <- as.factor(data_4$Division)
+data_4$Family <- as.factor(data_4$Family)
+data_4$Factor <- NA
+data_4$Factor <- ifelse(data_4$item %in% c(rownames(lip_f1), rownames(met_f1), rownames(mic_f1)), "F1", data_4$Factor)
+data_4$Factor <- ifelse(data_4$item %in% c(rownames(lip_f2), rownames(met_f2), rownames(mic_f2)), paste0(data_4$Factor, "F2"), data_4$Factor)
+data_4$Factor <- ifelse(data_4$item %in% c(rownames(lip_f3), rownames(met_f3), rownames(mic_f3)), paste0(data_4$Factor, "F3"), data_4$Factor)
+data_4$Factor <- ifelse(data_4$item %in% c(rownames(lip_f5), rownames(met_f5), rownames(mic_f5)), paste0(data_4$Factor, "F5"), data_4$Factor)
+data_4$Factor <- ifelse(data_4$item %in% c(rownames(lip_f8), rownames(met_f8), rownames(mic_f8)), paste0(data_4$Factor, "F8"), data_4$Factor)
+data_4$Factor <- gsub("NA", "", data_4$Factor)
+
+data_4$Factor_2 <- paste0(lengths(regmatches(data_4$Factor, gregexpr("F", data_4$Factor))), "_factors")
+
+ht = Heatmap(data_4[,-c(1:9, 107:108)],
+             col = col_fun1,
+             show_column_names= FALSE,
+             clustering_distance_columns = "spearman",
+             show_row_names = TRUE,
+             row_labels = data_4$names,
+             right_annotation = rowAnnotation(
+               Factor = as.factor(data_4$Factor),
+               Factor_nb = as.factor(data_4$Factor_2),
+               Type = as.factor(data_4$type),
+               Path_lip = as.factor(data_4$SUPER_PATHWAY),
+               Path_met = as.factor(data_4$SUPER.PATHWAY),
+               Family_mi = as.factor(data_4$Family),
+               Phylum_mi = as.factor(data_4$Division),
+               col = list(Path_lip = c("Other" = "grey", "Phosphatidylcholine" = mycols_met[1], "Phosphatidylethanolamine" = mycols_met[2], "Diacylglycerol" = mycols_met[3], "Triacylglycerol" = mycols_met[4]), Path_met = c("Other" = "grey", "Lipid" = mycols_met[5], "Xenobiotics" = mycols_met[6], "Amino Acid" = mycols_met[7], "Carbohydrate" = mycols_met[8], "Peptide" = mycols_met[9]), Family_mi = c("Other" = "grey", "Lachnospiraceae" = phylum_colors[1], "Ruminococcaceae" = phylum_colors[2], "Erysipelotrichaceae" = phylum_colors[3], "Veillonellaceae" = phylum_colors[4] ,"Muribaculaceae" = phylum_colors[5], "Prevotellaceae" = phylum_colors[6]), Phylum_mi = c("Other" = "grey", "Actinobacteria" = phylum_colors[7], "Firmicutes" = phylum_colors[8], "Bacteroidetes" = phylum_colors[9], "Proteobacteria" = phylum_colors[10] ,"Tenericutes" = phylum_colors[11]))),
+             top_annotation = HeatmapAnnotation(cluster = as.factor(data_2$cluster), col = list(cluster = c("1" = col[2], "2" = col[3], "3" = col[4])))
+             )
+draw(ht)
+dev.off()
+draw(ht)
+```
+
+               
+               
+```{r}
+write.xlsx(data_4, "processing/extracted_MOFA_features.xlsx")
+```
+
+
+```{r}
+pdf("results/figures_2/heatmap_all_factors_model_4_spearman_distance.pdf")
+data <- cbind(data_met, data_lip, data_mi)
+data_2 <- data[,colnames(data) %in% c(rownames(lip_f1), rownames(met_f1), rownames(mic_f1), 
+                                      rownames(lip_f2), rownames(met_f2), rownames(mic_f2), 
+                                      rownames(lip_f3), rownames(met_f3), rownames(mic_f3), 
+                                      rownames(lip_f5), rownames(met_f5), rownames(mic_f5), 
+                                      rownames(lip_f8), rownames(met_f8), rownames(mic_f8)
+                                      )]
+data_2 <- data.frame(t(scale(t(data_2))))
+data_2$X <- rownames(data_2)
+data_2 <- merge(cluster, data_2, by = "X")
+ht = Heatmap(data_2[,-c(1:2)], col = col_fun1, right_annotation = rowAnnotation(cluster = as.factor(data_2$cluster), col = list(cluster = c("1" = col[2],
+                                                                                                                                            "2" = col[3],
+                                                                                                                                            "3" = col[4]))), clustering_distance_rows = "spearman")
+draw(ht)
+dev.off()
+draw(ht)
+```
+
+```{r}
+clustering_distance_rows
+```
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+```{r}
+list_lip <- list(f1 = rownames(lip_f1),
+                 f2 = rownames(lip_f2))
+
+library(ggvenn)
+pdf("results/figures_2/overlap_F1_F2_lipids_model_4.pdf")
+ggvenn(
+  list_lip, 
+  fill_color = c("#0073C2FF", "#EFC000FF", "#868686FF", "#CD534CFF"),
+  stroke_size = 0.5, set_name_size = 4
+  )
+dev.off()
+```
+```{r}
+list_met <- list(f1 = rownames(met_f1),
+                 f2 = rownames(met_f2))
+
+library(ggvenn)
+pdf("results/figures_2/overlap_F1_F2_F5_met_model_4.pdf")
+ggvenn(
+  list_met, 
+  fill_color = c("#0073C2FF", "#EFC000FF", "#868686FF", "#CD534CFF"),
+  stroke_size = 0.5, set_name_size = 4
+  )
+dev.off()
+```
+
+```{r}
+data_samples <- data.frame(samples = rownames(MOFAobject@expectations$Z$group1), F1 = MOFAobject@expectations$Z$group1[,1], F2 = MOFAobject@expectations$Z$group1[,2], F5 = MOFAobject@expectations$Z$group1[,5])
+cluster <- data.frame(samples = MOFAobject@samples_metadata$sample, cluster = MOFAobject@samples_metadata$cluster)
+data_samples <- merge(cluster, data_samples, by = "samples")
+```
+
+
+```{r}
+length(rownames(lip_f1)[rownames(lip_f1) %in% rownames(lip_f2)])
+length(rownames(met_f1)[rownames(met_f1) %in% rownames(met_f2)])
+```
+```{r}
+library(tidyverse)
+```
+```{r}
+col <- c("#2273C3","#EFC144","#868686")
+```
+
+```{r}
+pdf("results/figures_2/plot_factor_F1_F2_mofa_model_4.pdf")
+p <- plot_factors(MOFAobject, factors = c(1,2), color_by = "cluster")+stat_ellipse(aes(color= color_by), geom = "polygon", alpha = 0.25)+ scale_color_manual(values=col)+ scale_fill_manual(values=col)
+p
+dev.off()
+
+pdf("results/figures_2/plot_factor_F5_F6_mofa_model_4.pdf")
+p <- plot_factors(MOFAobject, factors = c(5,6), color_by = "cluster")+stat_ellipse(aes(color= color_by), geom = "polygon", alpha = 0.25)+ scale_color_manual(values=col)+ scale_fill_manual(values=col)
+p
+dev.off()
+```
+```{r}
+ann_colors = list(
+    cluster = c(C1 = col[1], C2 = col[2], C3 = col[3])
+)
+```
+
+
+
+```{r}
+pdf("results/figures_2/plot_factor_F1_violin.pdf")
+plot_factor(MOFAobject, factor = 1, color_by = "cluster", add_violin = T, add_boxplot = T, dodge = T)+ scale_color_manual(values=col)+ scale_fill_manual(values=col)
+dev.off()
+pdf("results/figures_2/plot_factor_F2_violin.pdf")
+plot_factor(MOFAobject, factor = 2, color_by = "cluster", add_violin = T, add_boxplot = T, dodge = T)+ scale_color_manual(values=col)+ scale_fill_manual(values=col)
+dev.off()
+plot_factor(MOFAobject, factor = 4, color_by = "cluster", add_violin = T, add_boxplot = T, dodge = T)
+```
+```{r}
+pdf("results/figures_2/heatmap_clean_MOFA_F1_model_4_lipids.pdf")
+plot_data_heatmap(MOFAobject, factor = 1, view = "Lipids", features = 72, denoise = TRUE, cluster_rows = T, cluster_cols = T, annotation_samples = "cluster", annotation_colors = ann_colors)
+dev.off()
+
+pdf("results/figures_2/heatmap_clean_MOFA_F1_model_4_metabolites.pdf")
+plot_data_heatmap(MOFAobject, factor = 1, view = "Metabolites", features = 68, denoise = TRUE, cluster_rows = T, cluster_cols = T, annotation_samples = "cluster", annotation_colors = ann_colors)
+dev.off()
+
+
+pdf("results/figures_2/heatmap_clean_MOFA_F2_model_4_lipids.pdf")
+plot_data_heatmap(MOFAobject, factor = 2, view = "Lipids", features = 72, denoise = TRUE, cluster_rows = T, cluster_cols = T, annotation_samples = "cluster", annotation_colors = ann_colors)
+dev.off()
+
+pdf("results/figures_2/heatmap_clean_MOFA_F2_model_4_metabolites.pdf")
+plot_data_heatmap(MOFAobject, factor = 2, view = "Metabolites", features = 68, denoise = TRUE, cluster_rows = T, cluster_cols = T, annotation_samples = "cluster", annotation_colors = ann_colors)
+dev.off()
+
+```
+
+
+```{r}
+library(ggplot2)
+ggplot(data_samples, aes(x = F1, y = F2, color = as.factor(cluster)))+geom_point()
+```
+```{r}
+ggplot(data_samples, aes(x = 1, y = F1, fill = as.factor(cluster)))+geom_dotplot(binaxis = "y", stackdir = "center")
+pdf("results/figures_2/distribution_samples_F1_model_4.pdf")
+ggplot(data_samples, aes(x = 1, y = F1, fill = as.factor(cluster)))+geom_dotplot(binaxis = "y", stackdir = "center")+ scale_color_manual(values=col)+ scale_fill_manual(values=col)
+dev.off()
+
+ggplot(data_samples, aes(x = 1, y = F2, fill = as.factor(cluster)))+geom_dotplot(binaxis = "y", stackdir = "center")
+pdf("results/figures_2/distribution_samples_F2_model_4.pdf")
+ggplot(data_samples, aes(x = 1, y = F2, fill = as.factor(cluster)))+geom_dotplot(binaxis = "y", stackdir = "center")+ scale_color_manual(values=col)+ scale_fill_manual(values=col)
+dev.off()
+
+pdf("results/figures_2/distribution_samples_F5_model_4.pdf")
+ggplot(data_samples, aes(x = 1, y = F5, fill = as.factor(cluster)))+geom_dotplot(binaxis = "y", stackdir = "center")+ scale_color_manual(values=col)+ scale_fill_manual(values=col)
+dev.off()
+```
+```{r}
+col_fun1 = colorRamp2(c(-6,-2,-1, 0,1,2,6), c("#7F7F00","#B2B200" ,"#E5E500","white","#BF7FBF","#993299","#590059"))
+```
+
+```{r}
+pdf("results/figures_2/heatmap_F1_model_4.pdf")
+data <- cbind(data_met, data_lip, data_mi)
+data_2 <- data[,colnames(data) %in% c(rownames(lip_f1), rownames(met_f1), rownames(mic_f1))]
+data_2 <- data.frame(t(scale(t(data_2))))
+data_2$samples <- rownames(data_2)
+data_2 <- merge(cluster, data_2, by = "samples")
+ht = Heatmap(data_2[,-c(1:2)], col = col_fun1, right_annotation = rowAnnotation(cluster = as.factor(data_2$cluster)))
+draw(ht)
+dev.off()
+draw(ht)
+```
+
+```{r}
+pdf("results/figures_2/heatmap_F2_model_4.pdf")
+data <- cbind(data_met, data_lip, data_mi)
+data_2 <- data[,colnames(data) %in% c(rownames(lip_f2), rownames(met_f2), rownames(mic_f2))]
+data_2 <- data.frame(t(scale(t(data_2))))
+data_2$samples <- rownames(data_2)
+data_2 <- merge(cluster, data_2, by = "samples")
+ht = Heatmap(data_2[,-c(1:2)], col = col_fun1, right_annotation = rowAnnotation(cluster = as.factor(data_2$cluster)))
+draw(ht)
+dev.off()
+draw(ht)
+```
+
+```{r}
+pdf("results/figures_2/heatmap_F6_model_4.pdf")
+data <- cbind(data_met, data_lip, data_mi)
+data_2 <- data[,colnames(data) %in% c(rownames(lip_f6), rownames(met_f6), rownames(mic_f6))]
+data_2 <- data.frame(t(scale(t(data_2))))
+data_2$samples <- rownames(data_2)
+data_2 <- merge(cluster, data_2, by = "samples")
+ht = Heatmap(data_2[,-c(1:2)], col = col_fun1, right_annotation = rowAnnotation(cluster = as.factor(data_2$cluster)))
+draw(ht)
+dev.off()
+draw(ht)
+```
+
+
+```{r}
+pdf("results/figures_2/heatmap_F5_model_4.pdf")
+data <- cbind(data_met, data_lip, data_mi)
+data_2 <- data[,colnames(data) %in% c(rownames(lip_f5), rownames(met_f5), rownames(mic_f5))]
+data_2 <- data.frame(t(scale(t(data_2))))
+data_2$samples <- rownames(data_2)
+data_2 <- merge(cluster, data_2, by = "samples")
+ht = Heatmap(data_2[,-c(1:2)], col = col_fun1, right_annotation = rowAnnotation(cluster = as.factor(data_2$cluster)))
+draw(ht)
+dev.off()
+draw(ht)
+```
+
+```{r}
+pdf("results/figures_2/heatmap_F3_model_4.pdf")
+data <- cbind(data_met, data_lip, data_mi)
+data_2 <- data[,colnames(data) %in% c(rownames(lip_f3), rownames(met_f3), rownames(mic_f3))]
+data_2 <- data.frame(t(scale(t(data_2))))
+data_2$samples <- rownames(data_2)
+data_2 <- merge(cluster, data_2, by = "samples")
+ht = Heatmap(data_2[,-c(1:2)], col = col_fun1, right_annotation = rowAnnotation(cluster = as.factor(data_2$cluster)))
+draw(ht)
+dev.off()
+draw(ht)
+```
+
+
+pdf("results/figures_2/heatmap_F1_model_4.pdf")
+data <- cbind(data_met, data_lip, data_mi)
+data_2 <- data[,colnames(data) %in% c(rownames(lip_f1), rownames(met_f2), rownames(mic_f1))]
+data_2$samples <- rownames(data_2)
+data_2 <- merge(cluster, data_2, by = "samples")
+ht = Heatmap(data_2[,-c(1:2)], col = col_fun1, right_annotation = rowAnnotation(cluster = as.factor(data_2$cluster)))
+draw(ht)
+dev.off()
+draw(ht)
+
+
+pdf("results/figures_2/heatmap_F2_model_4.pdf")
+data <- cbind(data_met, data_lip, data_mi)
+data_2 <- data[,colnames(data) %in% c(rownames(lip_f2), rownames(met_f2))]
+data_2$samples <- rownames(data_2)
+data_2 <- merge(cluster, data_2, by = "samples")
+ht = Heatmap(data_2[,-c(1:2)], col = col_fun1, right_annotation = rowAnnotation(cluster = as.factor(data_2$cluster)))
+draw(ht)
+dev.off()
+draw(ht)
+
+
+
+
+```{r}
+plot_factor(MOFAobject, 
+  factors = 1, 
+  color_by = "Factor1"
+)
+```
+
+```{r}
+plot_weights(MOFAobject,
+ view = "Microbiome",
+ factor = 1,
+ nfeatures = 10,     # Top number of features to highlight
+ scale = F           # Scale weights from -1 to 1
+)
+pdf("results/figures/MOFA_weight_factor_1.pdf")
+plot_weights(MOFAobject,
+ view = "Lipids",
+ factor = 1,
+ nfeatures = 10,     # Top number of features to highlight
+ scale = F           # Scale weights from -1 to 1
+)
+dev.off()
+```
+
+```{r}
+pdf("results/figures/top_features_metabolites_F1_model_4.pdf")
+plot_top_weights(MOFAobject,
+ view = "Metabolites",
+ factor = 1,
+ nfeatures = 10,     # Top number of features to highlight
+ scale = T           # Scale weights from -1 to 1
+)
+dev.off()
+```
+
+```{r}
+pdf("results/figures/top_features_lipids_F1_model_4.pdf")
+plot_top_weights(MOFAobject,
+ view = "Lipids",
+ factor = 1,
+ nfeatures = 10,     # Top number of features to highlight
+ scale = T           # Scale weights from -1 to 1
+)
+dev.off()
+```
+```{r}
+plot_factor(MOFAobject, 
+  factors = 1, 
+  color_by = "cluster",
+  add_violin = TRUE,
+  dodge = TRUE
+)
+```
+
+```{r}
+plot_factor(MOFAobject, 
+  factors = 1, 
+  color_by = "METS",
+  dodge = TRUE,
+  add_violin = TRUE
+)
+```
+```{r}
+plot_data_scatter(MOFAobject, 
+  view = "Lipids",
+  factor = 1,  
+  features = 4,
+  sign = "negative",
+  color_by = "cluster")
+pdf("results/figures/top_4_features_factor_1.pdf")
+plot_data_scatter(MOFAobject, 
+  view = "Lipids",
+  factor = 1,  
+  features = 4,
+  sign = "negative",
+  color_by = "group")
+dev.off()
+```
+```{r}
+plot_data_scatter(MOFAobject, 
+  view = "Metabolites",
+  factor = 1,  
+  features = 4,
+  sign = "negative",
+  color_by = "cluster")
+pdf("results/figures/top_4_features_metabolites_factor_1.pdf")
+plot_data_scatter(MOFAobject, 
+  view = "Metabolites",
+  factor = 1,  
+  features = 4,
+  sign = "negative",
+  color_by = "group")
+dev.off()
+```
+
+```{r}
+write.csv(rownames(lip_f1), "results/MOFA/list_model_4_lipids_F1.csv")
+write.csv(rownames(met_f1), "results/MOFA/list_model_4_metabolites_F1.csv")
+
+write.csv(rownames(lip_f2), "results/MOFA/list_model_4_lipids_F2.csv")
+write.csv(rownames(met_f2), "results/MOFA/list_model_4_metabolites_F2.csv")
+```
+
+
+```{r}
+plot_data_heatmap(MOFAobject, 
+  view = "Lipids",
+  factor = 1,  
+  features = 500,
+  cluster_rows = FALSE, cluster_cols = FALSE,
+  show_rownames = TRUE, show_colnames = FALSE,
+  scale = "row",
+  denoise = TRUE
+)
+```
+
+Question --> number of groups ? Right now only one --> should change 
+model_opts$ard_factors <- TRUE (if multiple groups)

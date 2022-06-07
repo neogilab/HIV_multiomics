@@ -1,0 +1,426 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+
+```{r}
+library(xlsx)
+library(gplots)
+library(ComplexHeatmap)
+library(circlize)
+library(limma)
+library("colorspace")
+library(ggplot2)
+library(dplyr)
+library(scales)
+```
+
+```{r}
+col <- c("#6b8150", "#2273C3","#EFC144","#868686")
+```
+
+```{r}
+mic_met <- read.xlsx("/home/flomik/Desktop/Code-PHD/3_layers_integration/data/microbiome_derived_metabolites.xlsx", 1)
+```
+
+```{r}
+list_mic_met <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/metabolites_pathways.csv")
+list_mic_met_1 <- list_mic_met[list_mic_met$BIOCHEMICAL %in% mic_met$BIOCHEMICAL,]
+list_mic_met_2 <- list_mic_met[list_mic_met$SUB.PATHWAY %in% mic_met$BIOCHEMICAL,]
+list_mic_met_3 <- list_mic_met[grepl("acetate",list_mic_met$BIOCHEMICAL) | grepl("propionate",list_mic_met$BIOCHEMICAL)  | grepl("butyrate",list_mic_met$BIOCHEMICAL) | grepl("indole",list_mic_met$BIOCHEMICAL) | grepl("kynurenine",list_mic_met$BIOCHEMICAL),]
+list_mic_met <- rbind(list_mic_met_1, list_mic_met_2, list_mic_met_3)
+list_mic_met <- list_mic_met[!duplicated(list_mic_met),]
+list_mic_met$names_2 <- list_mic_met$BIOCHEMICAL
+list_mic_met$type = "MDM"
+```
+
+```{r}
+write.table(list_mic_met, "processing/MDM_clean_list_2.txt", quote = FALSE, sep = "\t")
+```
+Immunomodulatory Metabolites that Are Produced by Intestinal Bacteria
+- Short-chain fatty acids (primarily acetate, propionate, butyrate)
+- Indole derivatives
+- Polyamines (primarily putrescine, spermidine, spermine)
+
+Metabolites that Are Produced by the Host and Biochemically Modified by Gut Bacteria
+- Secondary bile acids
+- Taurine
+
+Metabolites that Are Synthesized De Novo by Gut Microbes
+- ATP
+- Polysaccharide A (PSA)
+
+```{r}
+list_mic_met$BIOCHEMICAL[is.na(list_mic_met$under_group)]
+```
+
+```{r}
+mic_met_2 <- mic_met[grepl("Postler",mic_met$Origin),]
+list_mic_met <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/metabolites_pathways.csv")
+
+
+list_mic_met_1 <- list_mic_met[list_mic_met$BIOCHEMICAL %in% mic_met_2$BIOCHEMICAL,]
+list_mic_met_2 <- list_mic_met[list_mic_met$SUB.PATHWAY %in% mic_met_2$BIOCHEMICAL,]
+list_mic_met_3 <- list_mic_met[grepl("acetate",list_mic_met$BIOCHEMICAL) | grepl("propionate",list_mic_met$BIOCHEMICAL)  | grepl("butyrate",list_mic_met$BIOCHEMICAL) | grepl("indole",list_mic_met$BIOCHEMICAL),]
+
+list_mic_met <- rbind(list_mic_met_1, list_mic_met_2, list_mic_met_3)
+list_mic_met <- list_mic_met[!duplicated(list_mic_met),]
+list_mic_met$names_2 <- list_mic_met$BIOCHEMICAL
+list_mic_met$type = "MDM"
+
+list_mic_met$group <- NA
+list_mic_met$group[list_mic_met$SUB.PATHWAY == "Secondary Bile Acid Metabolism" | list_mic_met$BIOCHEMICAL == "taurine"] <- "produced_by_host_modified_by_bacteria"
+list_mic_met$group[is.na(list_mic_met$group)] <- "produced_by_intestinal_bacteria"
+list_mic_met$under_group <- NA
+
+list_mic_met$under_group[list_mic_met$SUB.PATHWAY == "Secondary Bile Acid Metabolism"] <- "Secondary Bile Acid Metabolism"
+list_mic_met$under_group[list_mic_met$BIOCHEMICAL == "taurine"] <- "Taurine"
+
+list_mic_met$under_group[grep("acetate",list_mic_met$BIOCHEMICAL)] <- "Acetate derivates"
+list_mic_met$under_group[grep("propionate",list_mic_met$BIOCHEMICAL)] <- "Propionate derivates"
+list_mic_met$under_group[grep("butyrate",list_mic_met$BIOCHEMICAL)] <- "Butyrate derivates"
+
+list_mic_met$under_group[list_mic_met$SUB.PATHWAY == "Short Chain Fatty Acid"] <- "Short Chain Fatty Acid"
+list_mic_met$under_group[list_mic_met$SUB.PATHWAY == "Polyamine Metabolism"] <- "Polyamines"
+
+list_mic_met$under_group[grep("indol",list_mic_met$BIOCHEMICAL)] <- "Indole derivatives"
+
+write.table(list_mic_met, "processing/MDM_clean_list_2_Postler.txt", quote = FALSE, sep = "\t")
+
+```
+
+```{r}
+net_1 <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/final_list", sep = "_")
+#net_1 <- net_1[net_1$MDM == "yes",]
+net_2 <- net_1[!net_1$met %in% list_mic_met$BIOCHEMICAL,]
+net_1 <- net_1[net_1$feat1 %in% list_mic_met$BIOCHEMICAL  | net_1$feat2 %in% list_mic_met$BIOCHEMICAL,]
+net_1_list <- unique(c(net_1$feat1, net_1$feat2))
+write.table(data.frame(name = net_1_list, MDM_2 = "MDM_neiborgs"), "processing/MDM_clean_list_4.txt", quote = FALSE, sep = "\t")
+```
+
+```{r}
+data_met <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/metabolomics_log2_plusHC.csv", check.names = FALSE)
+data_met$cluster <- factor(data_met$cluster, levels = c("Ctrl", 1, 2, 3))
+```
+
+```{r}
+dge <- read.delim("results/LIMMA_results_metabolites_with_HC.csv", sep = ",")
+dge_mic_met <- dge[dge$BIOCHEMICAL %in% list_mic_met$BIOCHEMICAL,]
+```
+
+```{r}
+dge_sign <- read.delim("results/LIMMA_results_metabolites_with_HC_filt.csv", sep = " ")
+#dge_sign <- dge_sign[!grepl("Ctrl",dge_sign$Comp),]
+```
+
+```{r}
+data_sign <- data_met[, colnames(data_met) %in% c("cluster", dge_sign$BIOCHEMICAL)]
+```
+
+```{r}
+pca <- prcomp(data_sign[, -1], scale. = TRUE)
+df_out <- as.data.frame(pca$x)
+df_out$group <- as.factor(data_sign$cluster)
+  
+x <- project.pca.proportionvariances <- ((pca$sdev^2) / (sum(pca$sdev^2)))*100
+a1 <- x[1]
+a2 <- x[2]
+
+gg <- data.frame(cluster=factor(df_out$group), x=df_out$PC1, y=df_out$PC2)
+  centroids <- aggregate(cbind(x,y)~cluster,data=gg,mean)
+  gg <- merge(gg,centroids,by="cluster",suffixes=c("",".centroid"))
+  
+ggplot(gg)+
+    geom_point(aes(x=x,y=y,color=cluster, fill = cluster), size=3)+
+    stat_ellipse(geom = "polygon", aes(x=x,y=y,color=cluster, fill = cluster), alpha = 0.3) +
+    geom_point(data=centroids, aes(x=x, y=y, color=cluster, fill = cluster), size = 5, alpha = 0.9, shape = 19)+ 
+    geom_segment(aes(x=x.centroid, y=y.centroid, xend=x, yend=y, color=cluster))+
+    theme(legend.title=element_text(size=15),legend.text=element_text(size=12),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=15),axis.title.x=element_text(size=15),
+        axis.text.y=element_text(size=18),axis.text.x=element_text(size=18))+
+    xlab(paste0("PC1: ",round(a1,0),"% variance"))+
+    ylab(paste0("PC2: ",round(a2,0),"% variance"))+ 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)))+ scale_color_manual(values=col)+ scale_fill_manual(values=col)
+
+path_fig <- paste0("results/figures/PCA_significant_metabolomics_correlated_centroids.pdf")
+dev.copy(pdf, path_fig, height = 4, width = 6)
+dev.off()
+```
+```{r}
+pca <- prcomp(data_sign[, -1], scale. = TRUE)
+df_out <- as.data.frame(pca$x)
+df_out$group <- as.factor(data_sign$cluster)
+  
+x <- project.pca.proportionvariances <- ((pca$sdev^2) / (sum(pca$sdev^2)))*100
+a1 <- x[1]
+a2 <- x[2]
+
+gg <- data.frame(cluster=factor(df_out$group), x=df_out$PC1, y=df_out$PC2)
+  centroids <- aggregate(cbind(x,y)~cluster,data=gg,mean)
+  gg <- merge(gg,centroids,by="cluster",suffixes=c("",".centroid"))
+  
+ggplot(df_out)+
+    geom_point(aes(x=PC1,y=PC2,color=group, fill = group), size=3) +
+    theme(legend.title=element_text(size=15),legend.text=element_text(size=12),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=15),axis.title.x=element_text(size=15),
+        axis.text.y=element_text(size=18),axis.text.x=element_text(size=18))+
+    xlab(paste0("PC1: ",round(a1,0),"% variance"))+
+    ylab(paste0("PC2: ",round(a2,0),"% variance"))+ 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)))+ scale_color_manual(values=col)+ scale_fill_manual(values=col)
+
+path_fig <- paste0("results/figures/PCA_significant_metabolomics_correlated.pdf")
+dev.copy(pdf, path_fig, height = 4, width = 6)
+dev.off()
+```
+
+```{r}
+data_sign <- data_sign[, colnames(data_sign) %in% c("cluster", list_mic_met$BIOCHEMICAL)]
+```
+
+```{r}
+pca <- prcomp(data_sign[, -1], scale. = TRUE)
+df_out <- as.data.frame(pca$x)
+df_out$group <- as.factor(data_sign$cluster)
+  
+x <- project.pca.proportionvariances <- ((pca$sdev^2) / (sum(pca$sdev^2)))*100
+a1 <- x[1]
+a2 <- x[2]
+
+gg <- data.frame(cluster=factor(df_out$group), x=df_out$PC1, y=df_out$PC2)
+  centroids <- aggregate(cbind(x,y)~cluster,data=gg,mean)
+  gg <- merge(gg,centroids,by="cluster",suffixes=c("",".centroid"))
+  
+ggplot(df_out)+
+    geom_point(aes(x=PC1,y=PC2,color=group, fill = group), size=3)+
+    theme(legend.title=element_text(size=15),legend.text=element_text(size=12),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=15),axis.title.x=element_text(size=15),
+        axis.text.y=element_text(size=18),axis.text.x=element_text(size=18))+
+    xlab(paste0("PC1: ",round(a1,0),"% variance"))+
+    ylab(paste0("PC2: ",round(a2,0),"% variance"))+ 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)))+ scale_color_manual(values=col)+ scale_fill_manual(values=col)
+
+path_fig <- paste0("results/figures/PCA_significant_microbiome_derived_metabolomics_correlated.pdf")
+dev.copy(pdf, path_fig, height = 4, width = 6)
+dev.off()
+```
+
+```{r}
+pca <- prcomp(data_sign[, -1], scale. = TRUE)
+df_out <- as.data.frame(pca$x)
+df_out$group <- as.factor(data_sign$cluster)
+  
+x <- project.pca.proportionvariances <- ((pca$sdev^2) / (sum(pca$sdev^2)))*100
+a1 <- x[1]
+a2 <- x[2]
+
+gg <- data.frame(cluster=factor(df_out$group), x=df_out$PC1, y=df_out$PC2)
+  centroids <- aggregate(cbind(x,y)~cluster,data=gg,mean)
+  gg <- merge(gg,centroids,by="cluster",suffixes=c("",".centroid"))
+  
+ggplot(gg)+
+    geom_point(aes(x=x,y=y,color=cluster, fill = cluster), size=3)+
+    stat_ellipse(geom = "polygon", aes(x=x,y=y,color=cluster, fill = cluster), alpha = 0.3) +
+    geom_point(data=centroids, aes(x=x, y=y, color=cluster, fill = cluster), size = 5, alpha = 0.9, shape = 19)+ 
+    geom_segment(aes(x=x.centroid, y=y.centroid, xend=x, yend=y, color=cluster))+
+    theme(legend.title=element_text(size=15),legend.text=element_text(size=12),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=15),axis.title.x=element_text(size=15),
+        axis.text.y=element_text(size=18),axis.text.x=element_text(size=18))+
+    xlab(paste0("PC1: ",round(a1,0),"% variance"))+
+    ylab(paste0("PC2: ",round(a2,0),"% variance"))+ 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)))+ scale_color_manual(values=col)+ scale_fill_manual(values=col)
+
+path_fig <- paste0("results/figures/PCA_significant_microbiome_derived_metabolomics_correlated_centroids.pdf")
+dev.copy(pdf, path_fig, height = 4, width = 6)
+dev.off()
+```
+
+
+## heatmap
+```{r}
+DGE <- dge_mic_met
+data <- data_met
+```
+
+```{r}
+table_DGE <- data.frame(Metabolite = unique(dge_mic_met$BIOCHEMICAL), LFC_G1G2 = NA, LFC_G1G3 = NA, LFC_G2G3 =NA, LFC_C1_Ctrl = NA, LFC_C2_Ctrl = NA, LFC_C3_Ctrl = NA, FDR_G1G2 = NA, FDR_G1G3 = NA, FDR_G2G3 =NA, FDR_C1_Ctrl = NA, FDR_C2_Ctrl = NA, FDR_C3_Ctrl = NA)
+```
+
+```{r}
+for (i in 1:nrow(table_DGE)){
+  table_DGE[i, 2] <- DGE$logFC[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group2-group1"]
+  table_DGE[i, 3] <- DGE$logFC[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group3-group1"]
+  table_DGE[i, 4] <- DGE$logFC[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group3-group2"]
+  table_DGE[i, 5] <- DGE$logFC[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group1-groupCtrl"]
+  table_DGE[i, 6] <- DGE$logFC[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group2-groupCtrl"]
+  table_DGE[i, 7] <- DGE$logFC[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group3-groupCtrl"]
+  table_DGE[i, 8] <- DGE$adj.P.Val[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group2-group1"]
+  table_DGE[i, 9] <- DGE$adj.P.Val[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group3-group1"]
+  table_DGE[i, 10] <- DGE$adj.P.Val[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group3-group2"]
+  table_DGE[i, 11] <- DGE$adj.P.Val[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group1-groupCtrl"]
+  table_DGE[i, 12] <- DGE$adj.P.Val[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group2-groupCtrl"]
+  table_DGE[i, 13] <- DGE$adj.P.Val[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group3-groupCtrl"]
+}
+
+table_DGE$LFC_G1G2 <- ifelse(table_DGE$FDR_G1G2 < 0.1, table_DGE$LFC_G1G2, NA)
+table_DGE$LFC_G1G3 <- ifelse(table_DGE$FDR_G1G3 < 0.1, table_DGE$LFC_G1G3, NA)
+table_DGE$LFC_G2G3 <- ifelse(table_DGE$FDR_G2G3 < 0.1, table_DGE$LFC_G2G3, NA)
+
+table_DGE$LFC_C1_Ctrl <- ifelse(table_DGE$FDR_C1_Ctrl < 0.1, table_DGE$LFC_C1_Ctrl, NA)
+table_DGE$LFC_C2_Ctrl <- ifelse(table_DGE$FDR_C2_Ctrl < 0.1, table_DGE$LFC_C2_Ctrl, NA)
+table_DGE$LFC_C3_Ctrl <- ifelse(table_DGE$FDR_C3_Ctrl < 0.1, table_DGE$LFC_C3_Ctrl, NA)
+
+
+
+table_DGE_filt <- table_DGE[,c(1:7)]
+write.csv(table_DGE_filt, "processing/processing_microbione_derived_metabolomics.csv")
+name_met <- rowSums(is.na(table_DGE_filt[,-1])) != ncol(table_DGE_filt[,-1])
+table_DGE_filt <- table_DGE_filt[name_met,]
+
+write.csv(table_DGE_filt, "processing/processing_microbione_derived_metabolomics_filt.csv")
+```
+
+```{r}
+dge_HC_HIV <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/LIMMA_results_metabolites_HIV-Ctrl_filt.csv")
+dge_HC_HIV <- select(dge_HC_HIV, X, logFC)
+names(dge_HC_HIV) <- c("Metabolite", "LFC_HC_HIV")
+```
+
+```{r}
+cluster <- data$cluster
+data_2 <- data.frame(t(data[,-c(1,2)]))
+data_2$Metabolite <- rownames(data_2)
+data_2 <- merge(dge_HC_HIV, data_2, by = "Metabolite", all.y = TRUE)
+data_2 <- merge(table_DGE_filt, data_2, by = "Metabolite", all.x = TRUE)
+names(list_mic_met)[1] <- "Metabolite"
+data_2 <- merge(data_2, list_mic_met, by = "Metabolite")
+data_2$Group <- NA
+data_2$Group[grepl("acetate", data_2$Metabolite)] <- "acetate derivates"
+data_2$Group[grepl("butyrate", data_2$Metabolite)] <- "butyrate derivates"
+data_2$Group[grepl("kynurenine", data_2$Metabolite)] <- "kynurenine derivates"
+data_2$Group[grepl("propionate", data_2$Metabolite)] <- "propionate derivates"
+data_2$Group[grepl("indole", data_2$Metabolite)] <- "indole derivates"
+data_2$SUB.PATHWAY <- as.vector(data_2$SUB.PATHWAY)
+list_other <- names(table(data_2$SUB.PATHWAY) > 1)
+
+data_2$SUB.PATHWAY[!data_2$SUB.PATHWAY %in% c("Lipid Fatty Acid Metabolism (Acyl Carnitine, Short Chain)","Tryptophan Metabolism", "Benzoate Metabolism", "Polyamine Metabolism", "Primary Bile Acid Metabolism", "Secondary Bile Acid Metabolism")] <- "Others"
+```
+
+## heatmap metabolites
+
+
+```{r}
+names(data_2)
+```
+
+```{r}
+data_3 <- t(data_2[,-c(1:8, 126:132)])
+data_3 <- data.frame(scale(data_3))
+max(data_3)
+min(data_3)
+```
+
+```{r}
+colnames(data_3) <- data_2$Metabolite
+```
+
+```{r}
+data_3[data_3 > 3] <- 3
+data_3[data_3 < -3] <- -3
+```
+
+```{r}
+col_fun1 = colorRamp2(c(-3,-1.2, -1, 0,1, 1.2,3), c("#7F7F00","#B2B200" ,"#E5E500","white","#BF7FBF","#993299","#590059"))
+col_fun_2 = colorRamp2(c(-1, 0, 1), c("blue", "white", "red"))
+```
+
+
+
+```{r}
+pdf("results/figures/figure_2_heatmap_3_layers_integration_microbiome_derived_metabolites_2.pdf", width = 16, height = 7)
+ht = Heatmap(t(data_3), column_order = sort(colnames(t(data_3))),  col = col_fun1, show_column_names = FALSE, column_split = cluster, row_split = data_2$under_group, column_title = c("Ctrl",1, 2, 3), 
+             column_title_gp = gpar(fill = col), border = FALSE, column_gap = unit(2, "mm"), right_annotation = rowAnnotation(Ctrl_HIV = data_2$LFC_HC_HIV, C2vsC1 = data_2$LFC_G1G2,
+                                              C3vsC1 = data_2$LFC_G1G3,
+                                              C3vsC2 = data_2$LFC_G2G3,
+                                              C1vsCtrl = data_2$LFC_C1_Ctrl,
+                                              C2vsCtrl = data_2$LFC_C2_Ctrl,
+                                              C3vsCtrl = data_2$LFC_C3_Ctrl,
+                                              Group = data_2$group,
+                                              Under_group = data_2$under_group,
+                                              col = list(Ctrl_HIV = col_fun_2, C2vsC1 = col_fun_2, C3vsC1 = col_fun_2, C3vsC2 = col_fun_2, C1vsCtrl = col_fun_2, C2vsCtrl = col_fun_2, C3vsCtrl = col_fun_2), show_legend = TRUE))
+draw(ht)
+dev.off()
+```
+```{r}
+x <- data_2[,c(1,129:131)]
+x$label <- "MDM_all_comp"
+write.csv(x, "processing/list_microbiome_derived_metabolites_heatmap_all_comparisons.csv")
+```
+
+```{r}
+m <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/table_node_super_network_MDM.csv")
+correlations <- read.csv("processing/metabolomics_data_HIV_correlations.csv")
+correlations <- correlations[correlations$R != 0,]
+correlations <- correlations[correlations$feat1 %in% data_2$Metabolite | correlations$feat2 %in% data_2$Metabolite, ]
+write.xlsx(correlations, "processing/table_edges_first_neigbors.xlsx")
+
+write.xlsx(m[m$name %in% c(correlations$feat1, correlations$feat2),], "processing/table_nodes_first_neigbors.xlsx")
+```
+

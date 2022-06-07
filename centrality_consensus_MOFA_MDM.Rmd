@@ -1,0 +1,86 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+y$type[y$Metabolites_names %in% lip] <- "lip"
+y$type[y$Metabolites_names %in% met] <- "met"
+y$type[y$Metabolites_names %in% otu] <- "otu"
+
+```{r}
+table_edges <- read.delim("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/final_list", sep = "_")
+
+table_edges <- table_edges[table_edges$feat1 %in% data_2$feat1 & table_edges$feat2 %in% data_2$feat1,]
+
+
+table_edges$type_1[table_edges$feat1 %in% lip] <- "lip"
+table_edges$type_1[table_edges$feat1 %in% met] <- "met"
+table_edges$type_1[table_edges$feat1 %in% otu] <- "otu"
+
+table_edges$type_2[table_edges$feat2 %in% lip] <- "lip"
+table_edges$type_2[table_edges$feat2 %in% met] <- "met"
+table_edges$type_2[table_edges$feat2 %in% otu] <- "otu"
+
+table_edges_2 <- table_edges[table_edges$type_1 != table_edges$type_2,]
+
+table(table_edges_2$type_1, table_edges_2$type_2)
+
+n <- unique(c(table_edges$feat1, table_edges$feat2))
+```
+
+```{r}
+data <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/network/Table_nodesassociation_3_layers_filt.csv")
+```
+
+```{r}
+mdm <- read.delim("processing/MDM_clean_list_2_Postler.txt")
+```
+
+```{r}
+data_2 <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/network/table_nodes_consensus_network_with_MDM_and_MOFA.csv")
+```
+
+```{r}
+data_2 <- data_2[!is.na(data_2$MOFA),]
+
+lip <- data_2$feat1[data_2$type == "Lip"]
+met <- data_2$feat1[data_2$type == "Met"]
+otu <- data_2$feat1[data_2$type == "Otu"]
+```
+
+```{r}
+x <- data_2[data_2$feat1 %in% mdm$names_2,]
+
+y <- data[data$Metabolites_names %in% data_2$feat1,]
+y$type <- NA
+
+y$type[y$Metabolites_names %in% lip] <- "lip"
+y$type[y$Metabolites_names %in% met] <- "met"
+y$type[y$Metabolites_names %in% otu] <- "otu"
+```
+
+```{r}
+for (i in 1:8) {
+  z <- y[y$Community == i,]
+  z2 <-mean(z$Degree)
+  print(table(z$type))
+  print(z2)
+}
+```
+```{r}
+data <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/src/Cytoscape/Network_MOFA default edge.csv")
+```
+
+```{r}
+table(data_2$type)
+```
+

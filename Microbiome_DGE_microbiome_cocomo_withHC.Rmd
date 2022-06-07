@@ -1,0 +1,135 @@
+---
+title: "Microbiome DGE"
+output: html_notebook
+---
+
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+
+```{r}
+library(xlsx)
+library(ggplot2)
+library(ComplexHeatmap)
+library(circlize)
+library(limma)
+library(dplyr)
+library("DESeq2")
+library(phyloseq)
+```
+
+```{r}
+col <- c("#6b8150", "#2273C3","#EFC144","#868686")
+```
+
+
+```{r}
+cluster <- read.csv("processing/cluster_SNF_3_omics_3_clusters_plusHC.csv")
+cluster$X <- NULL
+names(cluster)[2] <- "X"
+```
+
+
+```{r}
+name_ana <- "microbiome_project"
+```
+
+## microbiome = mann withney at family, phylum and genus
+```{r}
+# Close and re-open R
+GPr <- readRDS("processing/model_phyloseq_no_filter.rds")
+
+diagdds = phyloseq_to_deseq2(GPr, ~ cluster)
+# calculate geometric means prior to estimate size factors
+gm_mean = function(x, na.rm=TRUE){
+  exp(sum(log(x[x > 0]), na.rm=na.rm) / length(x))
+}
+
+geoMeans = apply(counts(diagdds), 1, gm_mean)
+
+diagdds = estimateSizeFactors(diagdds, geoMeans = geoMeans)
+diagdds = DESeq(diagdds, fitType="local")
+```
+
+```{r}
+resultsNames(diagdds)
+alpha = 0.05
+```
+```{r}
+res = results(diagdds, name="cluster_1_vs_HC")
+res = res[order(res$padj, na.last=NA), ]
+alpha = 0.05
+sigtab = res[(res$padj < alpha), ]
+sigtab = cbind(as(sigtab, "data.frame"), as(tax_table(GPr)[rownames(sigtab), ], "matrix"))
+head(sigtab)
+
+y <- rownames(sigtab)
+x1 <- select(sigtab,  Division, Class, Order, Family, Genus, log2FoldChange, padj)
+
+write.csv(sigtab, "results/microbiome_results_grp1_HC.csv")
+write.table(rownames(sigtab), "results/microbiome_results_grp1_HC_GSEA.txt", quote = FALSE)
+
+res = results(diagdds, name="cluster_2_vs_HC")
+res = res[order(res$padj, na.last=NA), ]
+alpha = 0.05
+sigtab = res[(res$padj < alpha), ]
+sigtab = cbind(as(sigtab, "data.frame"), as(tax_table(GPr)[rownames(sigtab), ], "matrix"))
+head(sigtab)
+
+y <- rownames(sigtab)
+y1 <- select(sigtab,  Division, Class, Order, Family, Genus, log2FoldChange, padj)
+
+write.csv(sigtab, "results/microbiome_results_grp2_HC.csv")
+write.table(rownames(sigtab), "results/microbiome_results_grp2_HC_GSEA.txt", quote = FALSE)
+
+res = results(diagdds, name="cluster_3_vs_HC")
+res = res[order(res$padj, na.last=NA), ]
+alpha = 0.05
+sigtab = res[(res$padj < alpha), ]
+sigtab = cbind(as(sigtab, "data.frame"), as(tax_table(GPr)[rownames(sigtab), ], "matrix"))
+head(sigtab)
+
+y <- rownames(sigtab)
+z1 <- select(sigtab,  Division, Class, Order, Family, Genus, log2FoldChange, padj)
+
+write.csv(sigtab, "results/microbiome_results_grp3_HC.csv")
+write.table(rownames(sigtab), "results/microbiome_results_grp3_HC_GSEA.txt", quote = FALSE)
+```
+
+```{r}
+table_otu <- rbind(x1, y1, z1)
+x1$otu <- rownames(x1)
+x1$comp <- "G1WT"
+y1$otu <- rownames(y1)
+y1$comp <- "G2WT"
+z1$otu <- rownames(z1)
+z1$comp <- "G3WT"
+```
+
+
+```{r}
+x1 <- select(x1, otu, log2FoldChange, padj)
+names(x1)[2:3] <- c("LFC_G1WT","FDR_G1WT")
+y1 <- select(y1, otu, log2FoldChange, padj)
+names(y1)[2:3] <- c("LFC_G2WT","FDR_G2WT")
+z1 <- select(z1, otu, log2FoldChange, padj)
+names(z1)[2:3] <- c("LFC_G3WT","FDR_G3WT")
+```
+
+```{r}
+table_lfc <- merge(x1, y1, by = "otu", all.x = TRUE, all.y = TRUE)
+table_lfc <- merge(table_lfc, z1, by = "otu", all.x = TRUE, all.y = TRUE)
+table_lfc$type <- "Otu"
+```
+
+```{r}
+write.csv(table_lfc, "processing/microbiome_comp_HC.csv", quote = FALSE, row.names = F)
+```
+

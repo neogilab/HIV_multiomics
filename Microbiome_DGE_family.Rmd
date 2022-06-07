@@ -1,0 +1,85 @@
+---
+title: "Microbiome Family DGE"
+output: html_notebook
+---
+
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+## family level
+## alpha diversity
+## beta diversity
+
+```{r}
+library(vegan)
+library(ggplot2)
+library(dplyr)
+```
+## load clusters
+```{r}
+cluster <- read.csv("processing/cluster_SNF_3_omics_3_clusters_plusHC.csv")
+cluster$X <- NULL
+names(cluster)[2] <- "X"
+cluster <- cluster[!is.na(cluster$cluster),]
+```
+
+## load data
+```{r}
+family <- read.csv("processing/data_family_clean.csv")
+family_data <- merge(cluster, family, by = "X")
+family_data$X.1 <- NULL
+family_data_2 <- family_data
+family_data$X <- NULL
+```
+
+```{r}
+num_data <- family_data
+```
+```{r}
+x <- pairwise.wilcox.test(num_data[,7], num_data$cluster, p.adj = "fdr")
+x
+```
+
+```{r}
+x <- pairwise.wilcox.test(num_data[,13], num_data$cluster, p.adj = "fdr")
+x
+```
+
+```{r}
+table_family <- data.frame(Family = NA, C1 = NA, C2 = NA, pval = NA)
+
+for (r in c(7,13)) {
+  name <- colnames(num_data)[r]
+  print(name)
+  x <- pairwise.wilcox.test(num_data[,r], num_data$cluster, p.adj = "fdr")
+  x2 <- data.frame(x$p.value)
+  colnames(x2) <- gsub("X", "", colnames(x2))
+  colnames(x2)
+  list_pairs <- list()
+  a <- 1
+  for (i in 1:nrow(x2)) {
+    for (j in 1:ncol(x2)) {
+      if(!is.na(x2[i, j]) & x2[i, j] < 0.1){
+        list_pairs[[a]] <- c(colnames(x2)[j], rownames(x2)[i])
+        print(name)
+        print(c(colnames(x2)[j], rownames(x2)[i]))
+        print(x2[i, j])
+        table_m <- data.frame(Family = name, C1 = colnames(x2)[j], C2 = rownames(x2)[i], pval = x2[i, j])
+        table_family <- rbind(table_m, table_family)
+        a = a + 1
+      }
+    }
+  }
+}
+
+write.csv(table_family, "results/DGE_family.csv")
+```
+
+

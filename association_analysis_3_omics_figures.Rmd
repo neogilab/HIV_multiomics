@@ -1,0 +1,272 @@
+---
+title: "Figures "
+output: html_notebook
+---
+
+
+1) bubble plots pathways
+2) barplots types omics per community
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+```
+## load data
+
+
+
+
+```{r}
+table_nodes <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/data/network/Table_nodesAA_3_layers_filt_consensus.csv")
+
+#table_nodes <- table_nodes[table_nodes$Community %in% c(1:7),]
+
+results_gsea <- read.csv("results/network/Results_centrality_networksAA_3_layers_filt_consensus.csv")
+```
+
+```{r}
+table_edges <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/network/network_correlation_positive_AA_3_layers_filt_consensus.csv")
+```
+
+
+```{r}
+features_mofa <- read.csv("processing/extracted_MOFA_features.csv")
+features_mofa <- features_mofa[,1:9]
+features_mofa$item[grepl("Met", features_mofa$item)] <- features_mofa$met[grepl("Met", features_mofa$item)]
+names(features_mofa)[2] <- "feat1"
+features_mofa$MOFA <- "yes"
+```
+
+```{r}
+mdm <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/processing_microbione_derived_metabolomics.csv")
+names(mdm)[2] <- "feat1"
+```
+
+```{r}
+names(table_nodes)
+table_nodes <- merge(table_nodes, features_mofa, by = "feat1", all.x = TRUE)
+table(table_nodes$MOFA)
+```
+```{r}
+table_edges_2 <- table_edges[table_edges$feat1 %in% mdm$feat1 | table_edges$feat2 %in% mdm$feat1, ]
+table_edges_2_features <- unique(c(table_edges_2$feat1, table_edges_2$feat2))
+table(table_nodes$MOFA)
+```
+
+
+```{r}
+table_nodes$MDM <- ifelse(table_nodes$feat1 %in% table_edges_2_features, "yes", "no")
+```
+
+```{r}
+write.csv(table_nodes, "results/network/table_nodes_consensus_network_with_MDM_and_MOFA.csv")
+```
+
+```{r}
+col <- c("#CC6600", "#009933", "#0066CC","#CC00CC","#009999","#990033")
+```
+
+```{r}
+table(table_nodes$Community)
+```
+
+```{r}
+results_gsea$Terms_Lipids <- as.vector(results_gsea$Terms_Lipids)
+results_gsea$Terms_Lipids <- gsub(",", "\n", results_gsea$Terms_Lipids)
+results_gsea$Terms_Lipids[results_gsea$Terms_Lipids == "Not"] <- c("No lipids in this community_", "No lipids in this community.","No lipids in this community")
+results_gsea$Terms_Lipids[results_gsea$Terms_Lipids == "triacylglycerol\ndiacylglycerol"] <- c("triacylglycerol\ndiacylglycerol", "triacylglycerol\ndiacylglycerol_")
+```
+
+
+```{r}
+table <- results_gsea
+table$value <- 50
+table <- table[order(table$Number_community, decreasing = TRUE),]
+table$color <- col
+position <- table$Terms_Lipids
+```
+
+```{r}
+cairo_pdf("results/figures/bubble_plot_pathways_lipidomics.pdf", height = 3, width = 7,family="mono")
+
+a <- ggplot(table, aes(x = value, y = Terms_Lipids, size = N_metabolites, color = as.factor(Number_community)))+ geom_point()+
+  labs(size ="Number of features")
+a + theme(axis.line=element_blank(),axis.text.x=element_blank(),axis.ticks=element_blank(),
+          axis.title.x=element_blank(),
+          axis.title.y=element_blank(),
+          panel.background=element_blank(),panel.border=element_blank(),panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),plot.background=element_blank(), axis.text.y = element_text(size=12, color = "black"))+ coord_cartesian(xlim = c(49, 50.05), expand = TRUE) + scale_y_discrete(limits = position, position = "right")+ 
+    scale_size_continuous(range = c(3, 8))+ scale_color_manual(values= col)+ guides(color = FALSE)
+
+dev.off()
+
+```
+
+```{r}
+results_gsea$Terms_Metabolites <- as.vector(results_gsea$Terms_Metabolites)
+results_gsea$Terms_Metabolites[results_gsea$Terms_Metabolites == "Not"] <- "No metabolites in this community"
+results_gsea$Terms_Metabolites[results_gsea$Terms_Metabolites == ""] <- c("No pathway significant_", "No pathway significant")
+```
+
+
+```{r}
+table <- results_gsea
+table$value <- 50
+table <- table[order(table$Number_community, decreasing = TRUE),]
+table$color <- col
+position <- table$Terms_Metabolites
+```
+
+```{r}
+cairo_pdf("results/figures/bubble_plot_pathways_metabolomics.pdf", height = 2, width = 7,family="mono")
+
+a <- ggplot(table, aes(x = value, y = Terms_Metabolites, size = N_metabolites, color = as.factor(table$Number_community)))+ geom_point()+
+  labs(size ="Number of features")
+a + theme(axis.line=element_blank(),axis.text.x=element_blank(),axis.ticks=element_blank(),
+          axis.title.x=element_blank(),
+          axis.title.y=element_blank(),
+          panel.background=element_blank(),panel.border=element_blank(),panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),plot.background=element_blank(), axis.text.y = element_text(size=12, color = "black"))+ coord_cartesian(xlim = c(49, 50.05), expand = TRUE) + scale_y_discrete(limits = position, position = "right")+ 
+    scale_size_continuous(range = c(3, 8))+ scale_color_manual(values= col)+ guides(color = FALSE)
+
+dev.off()
+```
+
+```{r}
+met <- read.csv("/home/flomik/Desktop/Code-PHD/COCOMO_v2/processing/metabolites_pathways.csv")
+lip <- read.csv("/home/flomik/Desktop/Code-PHD/COCOMO_v2/processing/lipids_pathways.csv")
+names(lip) <- names(met)
+annot <- rbind(met, lip)
+```
+
+```{r}
+names(table_nodes)[4] <- "BIOCHEMICAL"
+table_nodes_2 <- merge(table_nodes, annot, by = "BIOCHEMICAL", all.x = TRUE)
+table_nodes_2$type_2 <- paste0(table_nodes_2$type_1, "_", table_nodes_2$SUPER.PATHWAY)
+
+```
+
+```{r}
+table_communities <- data.frame(table(table_nodes$type_1, table_nodes$Community))
+table_communities_2 <- data.frame(table(table_nodes_2$type_2, table_nodes_2$Community))
+table_communities_2 <- table_communities_2[table_communities_2$Freq > 0, ]
+```
+
+```{r}
+ggplot(table_communities, aes(fill=Var1, y=Freq, x=Var2, label = Freq)) + 
+    geom_bar(stat="identity", alpha = 0.7,  colour="black")+
+  geom_text(size = 4, position = position_stack(vjust = 0.5))+
+  theme(
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())+theme_minimal()
+
+ggsave(paste0("results/figures/barplot_type_network_whole.pdf"), height = 6, width = 6)
+```
+
+ggplot(d3, aes(fill=Category, y=fraction, x=Group))+ 
+    geom_bar(stat="identity", alpha = 1, width = .7, colour="white", lwd=0.1) +
+  labs(x="Comparison",y="Comorbidities frequency")+
+    scale_fill_manual(values = rev(mycols))+
+  geom_text(aes(label=ifelse(fraction >= 0.07, paste0("n = ", count, ", \n", round(fraction*100, 0), "%"),"")), position=position_stack(vjust=0.5), colour="white")+
+  coord_flip() +
+  scale_y_continuous(labels = percent_format()) +
+  labs(y="", x="")
+
+ggsave(paste0("results/figures/barplot_comparisons_LIMMA_COCOMO.pdf"), width = 15, height = 8)
+
+```{r}
+col_1 <- colorRampPalette(c("#2f2e75", "#dbd9fc"))
+col_2 <- colorRampPalette(c("#6b0c53", "#fcd9f0"))
+col3 <- col_2(8) 
+
+col <- c(col_1(10),col3[1:4],"#4eaebf",col3[4:7],"#5f946f")
+```
+
+```{r}
+data_new2 <- table_communities_2 %>%                                      # Top N highest values by group
+  arrange(desc(Freq)) %>% 
+  group_by(Var2) %>%
+  slice(1:3)
+```
+```{r}
+m <- seq(1, 27, by = 3)
+n <- c(1, 4, 7, 10, 13, 16, 19, 20, 23)
+```
+
+
+```{r}
+list_lab <- list()
+y = 1
+for (i in n) {
+  list_lab[[y]] <- paste0("\n", data_new2$Var1[i], "\n", data_new2$Var1[i+1], "\n", data_new2$Var1[i+2])
+  y = y +1
+  
+  
+}
+
+list_lab[[7]] <- gsub("NA.*", "NA", list_lab[[7]])
+```
+
+```{r}
+list_lab_2 <- c(rep(list_lab[[1]], 8),
+                rep(list_lab[[2]], 9),
+                rep(list_lab[[3]], 6),
+                rep(list_lab[[4]], 6),
+                rep(list_lab[[5]], 10),
+                rep(list_lab[[6]], 3),
+                rep(list_lab[[7]], 1),
+                rep(list_lab[[8]], 3),
+                rep(list_lab[[9]], 4))
+
+table_communities_2$Var2 <- paste0(table_communities_2$Var2, list_lab_2)
+```
+
+```{r}
+ggplot(table_communities_2, aes(fill=Var1, y=Freq, x=Var2, label = Freq, color = Var1)) + 
+    geom_bar(stat="identity", alpha = 0.7,  colour="black")+
+  theme(
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())+
+  geom_text(aes(label=ifelse(Freq >= 20, Freq, "")), size = 4, position = position_stack(vjust = 0.5), color = "black")+scale_fill_manual(values = col) + scale_x_discrete(position = "top") 
+
+ggsave(paste0("results/network/barplot_type_network_communties_3.pdf"), height = 6, width = 19)
+```
+
+
+```{r}
+i <- 1
+```
+
+```{r}
+table_nodes <- table_nodes[-1,]
+```
+```{r}
+library(stringi)
+```
+
+## create files for pathway analysis
+```{r}
+for (i in 1:nrow(table_nodes)) {
+  for (com in 1:8){
+    for (type in c("lipidome", "microbiome", "metabolome")) {
+      if(table_nodes$Community[i] == com & table_nodes$Type[i] == type) {
+        write.table(table_nodes$Metabolites_names[i], paste0("results/microbiome_project/GSEA/", substr(type,1,3),"_", com, ".txt"), row.names = FALSE, quote = FALSE)
+      }
+    }
+  }
+}
+```
+

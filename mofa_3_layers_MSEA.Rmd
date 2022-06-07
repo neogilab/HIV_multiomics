@@ -1,0 +1,440 @@
+---
+title: "MOFA pathway analysis"
+output: html_notebook
+---
+
+
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+
+```{r}
+library(xlsx)
+library(dplyr)
+library(circlize)
+library(MOFA2)
+library(compositions)
+library(stringi)
+library(ggalluvial)
+```
+
+c()
+```{r}
+conv_met <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/biochemical_super_path.csv")
+names(conv_met)[1] <- "met"
+conv_met <- conv_met[conv_met$SUPER.PATHWAY != "",]
+
+conv_lip <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/lipids_superpathways.csv")
+names(conv_lip)[1] <- "item"
+tax_table <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/tax_table_COCOMO.csv", header = FALSE)
+names(tax_table) <- c("X", "Super_group", "Division", "Class", "Order", "Family", "Genus")
+tax_table <- select(tax_table, X, Division, Family, Genus)
+names(tax_table)[1] <- "item"
+```
+
+```{r}
+met_g <- table(conv_met)
+lip_g <- table(conv_lip)
+mic_g <- table(tax_table$item, tax_table$Division)
+
+met_g2 <- as.data.frame.matrix(table(conv_met))
+lip_g2 <- as.data.frame.matrix(table(conv_lip))
+mic_g2 <- as.data.frame.matrix(table(tax_table$item, tax_table$Division))
+```
+
+```{r}
+library(xlsx)
+library(dplyr)
+library(SNFtool)
+library(ROCR)
+library(cvAUC)
+library(circlize)
+library(MOFA2)
+library("rhdf5")
+library(ComplexHeatmap)
+library(ggplot2)
+```
+```{r}
+col <- c("#6b8150", "#2273C3","#EFC144","#868686")
+#col_border <- darken(col, 0.5)
+```
+
+```{r}
+cluster <- read.csv("processing/cluster_SNF_3_omics_3_clusters_plusHC.csv")
+cluster <- cluster[!is.na(cluster$cluster),]
+cluster$X <- NULL
+names(cluster)[2] <- "X"
+```
+
+## load clinical
+```{r}
+clinical <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/clinical_data_microbiome_project.csv")
+clinical$Combined_therapy <- gsub("\\/.*", "", clinical$Combined_therapy)
+clinical$Combined_therapy <- ifelse(clinical$Combined_therapy %in% c("ABC", "AZT", "TAF", "TDF"), clinical$Combined_therapy, "Others")
+clinical_data <- merge(cluster, clinical, by = "X")
+clinical_data$CD4_CD8 <- NA
+clinical_data$CD4_CD8 <- clinical_data$CD4/clinical_data$CD8
+clinical_data <- select(clinical_data, X, cluster, hypertension, Transm_mode, VAT, SAT, CD4_CD8, METS, AGE, BMI, Combined_therapy, X3rd_Drug, GENDER)
+names(clinical_data)[1] <- "sample"
+clinical_data$group <- "group1"
+clinical_data$cluster <- paste0("C", clinical_data$cluster)
+
+```
+
+## Load data
+```{r}
+data_lip <- read.csv("data/clp_lipidomics_data.csv")
+data_met <- read.csv("data/cocomo_norm_data_filt.csv")
+data_met <- data_met[data_met$SUPER.PATHWAY !="",]
+```
+
+## lipidome
+```{r}
+data_lip <- data_lip[data_lip$SUPER_PATHWAY !="",]
+data_lip <- data_lip[,c(1, 9:228)]
+names(data_lip) <- gsub("X", "", names(data_lip))
+lip <- data_lip$BIOCHEMICAL
+data_lip <- data.frame(t(data_lip[,-1]))
+colnames(data_lip) <- lip
+grep("Total", colnames(data_lip))
+data_lip <- data_lip[rownames(data_lip) %in% clinical_data$sample, ]
+data_lip <- data_lip[,1:963]
+grep("Total", colnames(data_lip))
+data_lip <- log2(data_lip)
+#data_lip <- data.frame(t(scale(t(data_lip), scale = TRUE)))
+#data_lip <- data_lip[, sapply(data_lip, var) > 0.05]
+```
+
+## metabolome
+```{r}
+data_met <- data_met[,c(1,13:232)]
+names(data_met)[-1] <- gsub("X", "", names(data_met)[-1])
+met <- data_met$BIOCHEMICAL
+data_met <- data.frame(t(data_met[,-1]))
+colnames(data_met) <- met
+data_met <- data_met[rownames(data_met) %in% clinical_data$sample, ]
+data_met <- log2(data_met)
+#data_met <- data.frame(t(scale(t(data_met), scale = TRUE)))
+#data_met <- data_met[, sapply(data_met, var) > 0.05]
+data_met <- data_met[order(match(rownames(data_met), rownames(data_lip))), ]
+```
+
+
+## microbiome
+```{r}
+data_mi <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/data_count_microbiome.csv")
+rownames(data_mi) <- data_mi$X
+data_mi$X <- NULL
+rownames(data_mi) <- gsub("X","",rownames(data_mi))
+data_mi <- data_mi[rownames(data_mi) %in% rownames(data_lip), ]
+data_mi <- data.frame(clr(data_mi))
+#data_mi <- data.frame(t(scale(t(data_mi), scale = FALSE)))
+data_mi <- data_mi[, sapply(data_mi, var) > 0.2]
+data_mi <- data_mi[order(match(rownames(data_mi), rownames(data_lip))), ]
+```
+
+
+```{r}
+convert_met <- data.frame(met = colnames(data_met), nb = paste0("Met", 1:ncol(data_met)))
+colnames(data_met) <- convert_met$nb
+```
+
+```{r}
+met_g2$met <- rownames(met_g2)
+met_g2 <- merge(convert_met, met_g2, by = "met")
+rownames(met_g2) <- met_g2$nb
+met_g2$nb <- NULL
+met_g2$met <- NULL
+
+met_g <- as.matrix(met_g2)
+```
+
+## load model (made using defaults parameters)
+```{r}
+MOFAobject <- load_model("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/mofa_model_4")
+MOFAobject
+```
+
+```{r}
+features_names(MOFAobject)[["Microbiome"]]
+```
+
+## add metadata
+```{r}
+# Sanity check
+stopifnot(all(sort(clinical_data$sample)==sort(unlist(samples_names(MOFAobject)))))
+
+# Add sample metadata to the model
+samples_metadata(MOFAobject) <- clinical_data
+```
+
+```{r}
+mic_g <- as.matrix(mic_g2)
+lip_g <- as.matrix(lip_g2)
+```
+
+```{r}
+list_view <- c("Lipids", "Metabolites", "Microbiome")
+list_annotation <- list(lip_g, met_g, mic_g)
+list_sign <- c("positive", "negative", "all")
+list_test <- c("parametric", "cor.adj.parametric", "permutation")
+```
+
+```{r}
+table_GSEA <- data.frame(View = NA, test = NA, sign = NA, Factor = NA, Pathways = NA)
+for (view in 1:length(list_view)) {
+  for (test in list_test) {
+    for (sign in list_sign) {
+      view_sel <- list_view[[view]]
+      anno_sel <- list_annotation[[view]]
+      enrichment.parametric <- run_enrichment(MOFAobject,
+                                              view = view_sel, factors = 1:15,
+                                              feature.sets = t(anno_sel),
+                                              sign = sign,
+                                              statistical.test = test,
+                                              p.adj.method = "fdr",
+                                              alpha = 0.1,
+                                              verbose = FALSE)
+      
+      m <- enrichment.parametric$sigPathways
+      m <- lapply(m, function(x) if(identical(x, character(0))) "none" else x)
+      for (i in 1:length(m)) {
+        if (length(m[[i]]) > 1) {
+          x <- 1:length(m[[i]])
+          m[[i]] <- stri_paste(unlist(m[[i]]), collapse='_')
+        }
+      }
+      table_res <- data.frame(View = rep(view_sel, 15), test = rep(test, 15), sign = rep(sign, 15), Factor = 1:15, Pathways = unlist(m))
+      table_GSEA <- rbind(table_res, table_GSEA)
+    }
+  }
+}
+
+write.csv(table_GSEA, "processing/table_GSEA_MOFA_factors.csv")
+table_GSEA <- table_GSEA[table_GSEA$Pathways != "none",]
+table_GSEA <- table_GSEA[!is.na(table_GSEA$sign),]
+
+table_GSEA_1 <- table_GSEA[table_GSEA$test == "parametric",]
+table_GSEA_2 <- table_GSEA[table_GSEA$test == "permutation",]
+table_GSEA_3 <- table_GSEA[table_GSEA$test == "cor.adj.parametric",]
+```
+```{r}
+table_GSEA_2 <- table_GSEA_2[table_GSEA_2$sign != "all",]
+table_GSEA_3 <- table_GSEA_3[table_GSEA_3$sign != "all",]
+```
+
+```{r}
+table(table_GSEA_1$Factor, table_GSEA_1$Pathways)
+```
+
+```{r}
+table_GSEA_1 <- table_GSEA_1[table_GSEA_1$sign != "all",]
+table_GSEA_1$test <- NULL
+table_GSEA_1$Factor <- paste0("Factor", table_GSEA_1$Factor)
+
+table_GSEA <- data.frame(View = NA, sign = NA, Factor = NA, Pathways = NA)
+for (i in 1:nrow(table_GSEA_1)){
+  x <- paste0(table_GSEA_1$Pathways[i], collapse=" ")
+  y <- as.list(strsplit(x, "_")[[1]])
+  table_2 <- table_GSEA_1[i,]
+  table_2 <- table_2[rep(seq_len(nrow(table_2)), each = length(y)),]
+  table_2$Pathways <- y[[1]]
+  table_GSEA <- rbind(table_GSEA, table_2)
+}
+
+write.csv(table_GSEA, "processing/table_pathway_analysis_MOFA_Factor_2.csv")
+```
+
+```{r}
+table(table_GSEA$Factor, table_GSEA$Pathways)
+```
+
+```{r}
+correlations <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/MOFA_correlation_clinical_parameters.csv")
+data <- merge(table_GSEA, correlations, by = "Factor")
+data$X <- NULL
+data$Freq <- 1
+
+data <- data[order(data$Factor),]
+data$Factor <- factor(data$Factor, levels = paste0("Factor", 1:15))
+data <- data[order(data$View),]
+data$Pathways <- factor(data$Pathways, levels = unique(data$Pathways))
+data$parameter <- factor(data$parameter, levels = c("cluster", "GENDER", "AGE", "BMI", "VAT", "SAT", "METS", "hypertension", "Transm_mode"))
+```
+
+ggplot(as.data.frame(UCBAdmissions),
+       aes(y = Freq, axis1 = Gender, axis2 = Dept)) +
+  geom_alluvium(aes(fill = Admit), width = 1/12) +
+  geom_stratum(width = 1/12, fill = "black", color = "grey") +
+  geom_label(stat = "stratum", aes(label = after_stat(stratum))) +
+  scale_x_discrete(limits = c("Gender", "Dept"), expand = c(.05, .05)) +
+  scale_fill_brewer(type = "qual", palette = "Set1") +
+  ggtitle("UC Berkeley admissions and rejections, by sex and department")
+  
+```{r}
+data_pathways <- select(data, View, Factor, Pathways, Freq)
+data_clinical <- select(data, View, Factor, parameter, Freq)
+```
+
+```{r}
+ggplot(as.data.frame(data_clinical),
+       aes(y = Freq,
+           axis1 = Factor, axis2 = parameter, fill = Factor)) +
+  geom_alluvium(aes(fill = View), width = 1/8) +
+  geom_stratum(width = 1/8, alpha = .5) +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  scale_x_discrete(limits = c("Factor", "Clinical parameters"), expand = c(.05, .05)) 
+
+ggsave("results/figures/sankey_plot_clinical_factors.pdf", width = 6, height = 5)
+```
+
+```{r}
+ggplot(as.data.frame(data_pathways),
+       aes(y = Freq,
+           axis1 = Factor, axis2 = Pathways, fill = View)) +
+  geom_alluvium(aes(fill = View), width = 1/8) +
+  geom_stratum(width = 1/8, alpha = .5) +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  scale_x_discrete(limits = c("Factor", "Pathway/Division"), expand = c(.05, .05)) +
+  scale_fill_brewer(type = "qual", palette = "Set1")
+
+ggsave("results/figures/sankey_plot_pathway_analysis_factors.pdf", width = 6, height = 5)
+```
+
+```{r}
+ggplot(as.data.frame(data),
+       aes(y = Freq,
+           axis1 = Pathways, axis2 = Factor, axis3 = parameter)) +
+  geom_alluvium(aes(fill = View),
+                width = 0, knot.pos = 0, reverse = FALSE) +
+  guides(fill = FALSE) +
+  geom_stratum(width = 1/8, reverse = FALSE) +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)),
+            reverse = FALSE) +
+  scale_x_continuous(breaks = 1:3, labels = c("Pathway/Division", "Factor", "Clinical parameter")) +
+  coord_flip()
+
+ggsave("results/figures/pathway_analysis_per_factor_2.pdf", width = 20, height = 6)
+```
+
+```{r}
+data_2 <- data[,c(2, 4,5,6)]
+data_2 <- data_2[!duplicated(data_2[,1:4]),] 
+```
+
+```{r}
+
+```
+
+
+## circos
+
+```{r}
+library(GOplot)
+```
+
+```{r}
+pathways$Genes <- gsub(",", ".", pathways$Genes)
+pathways$Genes <- gsub(";", ",", pathways$Genes)
+```
+
+```{r}
+data_2 <- aggregate(parameter ~ Pathways, data_2, paste, collapse = ", ")
+```
+
+
+ribbon.col = c("#006f62","#62006f", "#6f6200")
+```{r}
+m <- data.frame(unclass(table(data$parameter, data$Pathways)))
+m[m != 0] <- 1                
+m$logFC <- runif(9, -2, 2)
+
+
+
+pdf("results/figures/chordplot_MOFA.pdf", height = 12, width = 10)
+GOChord(m, space = 0.02, gene.space = 0.1, gene.size = 2, border.size = 0.2)
+dev.off()
+```
+
+
+```{r}
+
+```
+
+## get weights
+```{r}
+weights <- get_weights(MOFAobject, 
+  views = "all", 
+  factors = "all", 
+  as.data.frame = TRUE 
+)
+head(weights)
+```
+
+```{r}
+names(conv_lip) <- c("feature", "Pathways")
+data_lip <- merge(weights, conv_lip, by = "feature")
+data_lip$sign <- ifelse(data_lip$value >= 0, "positive", "negative")
+```
+
+```{r}
+conv_met <- merge(convert_met, conv_met, by = "met")
+conv_met$met <- NULL
+names(conv_met) <- c("feature", "Pathways")
+
+data_met <- merge(weights, conv_met, by = "feature")
+data_met$sign <- ifelse(data_met$value >= 0, "positive", "negative")
+```
+
+```{r}
+tax_table <- select(tax_table, item, Division)
+names(tax_table) <- c("feature", "Pathways")
+data_mic <- merge(weights, tax_table, by = "feature")
+data_mic$sign <- ifelse(data_mic$value >= 0, "positive", "negative")
+```
+
+```{r}
+data_lip_2 <- aggregate(data_lip$value, by=list(Factor = data_lip$factor, Pathways = data_lip$Pathways, sign = data_lip$sign), FUN=sum)
+data_met_2 <- aggregate(data_met$value, by=list(Factor = data_met$factor, Pathways = data_met$Pathways, sign = data_met$sign), FUN=sum)
+data_mic_2 <- aggregate(data_mic$value, by=list(Factor = data_mic$factor, Pathways = data_mic$Pathways, sign = data_mic$sign), FUN=sum)
+```
+
+## make individual link
+```{r}
+for (i in unique(data$parameter)){
+  name <- i
+  data_2 <- data[data$parameter == i,]
+  data_2$weigth <- NULL
+  data_3 <- merge(data_2, data_lip_2, by = c("Factor", "Pathways", "sign"))
+  data_4 <- merge(data_2, data_met_2, by = c("Factor", "Pathways", "sign"))
+  data_5 <- merge(data_2, data_mic_2, by = c("Factor", "Pathways", "sign"))
+  data_6 <- rbind(data_3, data_4, data_5)
+  ggplot(data=data_6, aes(y=abs(x), x=Factor, fill=Pathways)) +
+    geom_bar(stat="identity")+
+    scale_fill_brewer(palette="Paired")+
+    theme_minimal()+xlab(name)+ylab("absolute weight")
+  ggsave(paste0("results/figures/barplots/pathway_analysis_per_factor_3_", i,".pdf"), width = 4 + nrow(data_2))
+  
+  ggplot(as.data.frame(data_2),
+       aes(y = Freq,
+           axis1 = Pathways, axis2 = Factor, axis3 = parameter)) +
+  geom_alluvium(aes(fill = View),
+                width = 0, knot.pos = 0, reverse = FALSE) +
+  guides(fill = FALSE) +
+  geom_stratum(width = 1/8, reverse = FALSE) +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)),
+            reverse = FALSE) +
+  scale_x_continuous(breaks = 1:3, labels = c("Pathway/Division", "Factor", "Clinical parameter")) +
+  coord_flip()
+  ggsave(paste0("results/figures/sankeys/pathway_analysis_per_factor_3_", i,".pdf"), width = 4 + nrow(data_2))
+
+}
+```
+

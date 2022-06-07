@@ -1,0 +1,631 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+
+```{r}
+library(xlsx)
+library(gplots)
+library(ComplexHeatmap)
+library(circlize)
+library(limma)
+library("colorspace")
+library(ggplot2)
+library(dplyr)
+library(scales)
+```
+
+
+```{r}
+col <- c("#6b8150", "#2273C3","#EFC144","#868686")
+col_border <- darken(col, 0.5)
+```
+
+## bargraphs lipids
+```{r}
+lip <- read.csv("processing/lipids_superpathways.csv")
+lip$Type <- "lip"
+met <- read.csv("processing/biochemical_super_path.csv")
+met$Type <- "met"
+
+names(lip)
+names(met)[2] <- "SUPER_PATHWAY"
+conv <- rbind(lip, met)
+```
+
+```{r}
+cluster <- read.csv("processing/cluster_SNF_3_omics_3_clusters_plusHC.csv")
+cluster$X <- NULL
+names(cluster)[2] <- "X"
+```
+
+## load data
+```{r}
+data_lip <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/lipidomics_log2_plusHC.csv", check.names = FALSE, row.names = NULL)
+data_lip$cluster <- factor(data_lip$cluster, levels = c("Ctrl", 1, 2, 3))
+data_met <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/metabolomics_log2_plusHC.csv", check.names = FALSE)
+data_met$cluster <- factor(data_met$cluster, levels = c("Ctrl", 1, 2, 3))
+```
+
+```{r}
+mic <- read.csv("processing/relative_abundance_table.csv", row.names = 1)
+mic <- data.frame(t(mic))
+mic$X <- gsub("X","", rownames(mic))
+```
+
+## pca microbiome
+```{r}
+pca_data <- merge(cluster, mic, by = "X")
+pca_data_3 <- pca_data
+pca_data$X <- NULL
+pca_data[is.na(pca_data)] <-  0
+remove <- which(apply(pca_data, 2, var)==0)
+pca_data <- pca_data[,-remove]
+pca <- prcomp(pca_data[,-1], scale. = TRUE)
+df_out <- as.data.frame(pca$x)
+df_out$group <- as.factor(pca_data$cluster)
+head(df_out)
+pc1 <- data.frame(patient = pca_data_3$X, df_out$group, df_out$PC1)
+write.csv(pc1, "processing/pc1_variable_mic.csv")
+```
+
+```{r}
+x <- project.pca.proportionvariances <- ((pca$sdev^2) / (sum(pca$sdev^2)))*100
+a1 <- x[1]
+a2 <- x[2]
+barplot(project.pca.proportionvariances, cex.names=1, xlab=paste("Principal component (PC), 1-", length(pca$sdev)), ylab="Proportion of variation (%)", main="Scree plot", ylim=c(0,100))
+PCAloadings <- data.frame(Variables = rownames(pca$rotation), pca$rotation)
+PCAloadings_2 <- PCAloadings
+x <- abs(PCAloadings_2$PC1) < 0.1 & abs(PCAloadings_2$PC2) < 0.1
+PCAloadings_2$PC1[x] <- NA
+PCAloadings_2$PC2[x] <- NA
+PCAloadings_2$Variables[x] <- NA
+```
+# build ggplot dataframe with points (x,y) and corresponding groups (cluster)
+
+# calculate group centroid locations
+centroids <- aggregate(cbind(x,y)~cluster,data=gg,mean)
+# merge centroid locations into ggplot dataframe
+gg <- merge(gg,centroids,by="cluster",suffixes=c("",".centroid"))
+# generate star plot...
+ggplot(gg) +
+  geom_point(aes(x=x,y=y,color=cluster), size=3) +
+  geom_point(data=centroids, aes(x=x, y=y, color=cluster), size=4) +
+  geom_segment(aes(x=x.centroid, y=y.centroid, xend=x, yend=y, color=cluster))
+
+```{r}
+df_out$group <- factor(df_out$group, levels = c("Ctrl", 1, 2, 3))
+```
+
+```{r}
+gg <- data.frame(cluster=factor(df_out$group), x=df_out$PC1, y=df_out$PC2)
+centroids <- aggregate(cbind(x,y)~cluster,data=gg,mean)
+gg <- merge(gg,centroids,by="cluster",suffixes=c("",".centroid"))
+
+ggplot(gg)+
+  geom_point(aes(x=x,y=y,color=cluster, fill = cluster), size=3)+
+  stat_ellipse(geom = "polygon", aes(x=x,y=y,color=cluster, fill = cluster), alpha = 0.3) +
+  geom_point(data=centroids, aes(x=x, y=y, color=cluster, fill = cluster), size = 5, alpha = 0.9, shape = 19)+ 
+  geom_segment(aes(x=x.centroid, y=y.centroid, xend=x, yend=y, color=cluster))+
+  theme(legend.title=element_text(size=15),legend.text=element_text(size=12),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=15),axis.title.x=element_text(size=15),
+        axis.text.y=element_text(size=18),axis.text.x=element_text(size=18))+ scale_color_manual(values=col)+ scale_fill_manual(values=col)+
+  xlab(paste0("PC1: ",round(a1,0),"% variance"))+
+  ylab(paste0("PC2: ",round(a2,0),"% variance"))+ 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)))
+
+path_fig <- paste0("results/figures_2/PCA_clustering_97_patients_3_clusters_microbiome.pdf")
+dev.copy(pdf, path_fig, height = 4, width = 6)
+dev.off()
+```
+```{r}
+ggplot(df_out, aes( x= PC1, y = PC2, color = group))+ geom_point(size = 5, alpha = 0.9, shape = 19)+ 
+  theme(legend.title=element_text(size=15),legend.text=element_text(size=12),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=15),axis.title.x=element_text(size=15),
+        axis.text.y=element_text(size=18),axis.text.x=element_text(size=18))+ scale_color_manual(values=col)+
+  xlab(paste0("PC1: ",round(a1,0),"% variance")) +
+  ylab(paste0("PC2: ",round(a2,0),"% variance"))+ 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)), legend.position = "none")+
+  geom_segment(data = PCAloadings_2, aes(x = 0, y = 0, xend = (PC1),
+     yend = (PC2)), arrow = arrow(length = unit(1/2, "picas")),
+     color = "black")+
+  annotate("text", x = (PCAloadings_2$PC1), y = (PCAloadings_2$PC2),
+     label = PCAloadings_2$Variables)
+
+path_fig <- paste0("results/figures/PCA_clustering_97_patients_3_clusters_microbiome_loadings.pdf")
+dev.copy(pdf, path_fig, height = 4, width = 6)
+dev.off()
+```
+
+## pca lipidomics
+```{r}
+pca_data <- data_lip
+pca_data_3 <- pca_data
+pca_data$X <- NULL
+pca_data[is.na(pca_data)] <-  0
+remove <- which(apply(pca_data, 2, var)==0)
+pca_data <- pca_data[,-remove]
+pca <- prcomp(pca_data[,-1], scale. = TRUE)
+df_out <- as.data.frame(pca$x)
+df_out$group <- as.factor(pca_data$cluster)
+head(df_out)
+pc1 <- data.frame(patient = pca_data_3$X, df_out$group, df_out$PC1)
+write.csv(pc1, "processing/pc1_variable_lip.csv")
+```
+
+```{r}
+x <- project.pca.proportionvariances <- ((pca$sdev^2) / (sum(pca$sdev^2)))*100
+a1 <- x[1]
+a2 <- x[2]
+barplot(project.pca.proportionvariances, cex.names=1, xlab=paste("Principal component (PC), 1-", length(pca$sdev)), ylab="Proportion of variation (%)", main="Scree plot", ylim=c(0,100))
+PCAloadings <- data.frame(Variables = rownames(pca$rotation), pca$rotation)
+PCAloadings_2 <- PCAloadings
+x <- abs(PCAloadings_2$PC1) < 0.1 & abs(PCAloadings_2$PC2) < 0.1
+PCAloadings_2$PC1[x] <- NA
+PCAloadings_2$PC2[x] <- NA
+PCAloadings_2$Variables[x] <- NA
+```
+```{r}
+pca_data
+```
+
+```{r}
+gg <- data.frame(cluster=factor(df_out$group), x=df_out$PC1, y=df_out$PC2)
+centroids <- aggregate(cbind(x,y)~cluster,data=gg,mean)
+gg <- merge(gg,centroids,by="cluster",suffixes=c("",".centroid"))
+
+ggplot(gg)+
+  geom_point(aes(x=x,y=y,color=cluster, fill = cluster), size=3)+
+  stat_ellipse(geom = "polygon", aes(x=x,y=y,color=cluster, fill = cluster), alpha = 0.3) +
+  geom_point(data=centroids, aes(x=x, y=y, color=cluster, fill = cluster), size = 5, alpha = 0.9, shape = 19)+ 
+  geom_segment(aes(x=x.centroid, y=y.centroid, xend=x, yend=y, color=cluster))+
+  theme(legend.title=element_text(size=15),legend.text=element_text(size=12),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=15),axis.title.x=element_text(size=15),
+        axis.text.y=element_text(size=18),axis.text.x=element_text(size=18))+ scale_color_manual(values=col)+ scale_fill_manual(values=col)+
+  xlab(paste0("PC1: ",round(a1,0),"% variance"))+
+  ylab(paste0("PC2: ",round(a2,0),"% variance"))+ 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)))+ 
+  geom_text(aes(label = paste0("(", resp, ")")), nudge_y = -0.25)
+
+path_fig <- paste0("results/figures_2/PCA_clustering_97_patients_3_clusters_lipidomics.pdf")
+dev.copy(pdf, path_fig, height = 4, width = 6)
+dev.off()
+```
+```{r}
+ggplot(df_out, aes( x= PC1, y = PC2, color = group))+ geom_point(size = 5, alpha = 0.9, shape = 19)+ 
+  theme(legend.title=element_text(size=15),legend.text=element_text(size=12),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=15),axis.title.x=element_text(size=15),
+        axis.text.y=element_text(size=18),axis.text.x=element_text(size=18))+ scale_color_manual(values=col)+
+  xlab(paste0("PC1: ",round(a1,0),"% variance")) +
+  ylab(paste0("PC2: ",round(a2,0),"% variance"))+ 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)), legend.position = "none")+
+  geom_segment(data = PCAloadings_2, aes(x = 0, y = 0, xend = (PC1*300),
+     yend = (PC2*300)), arrow = arrow(length = unit(1/2, "picas")),
+     color = "black")+
+  annotate("text", x = (PCAloadings_2$PC1*300), y = (PCAloadings_2$PC2*300),
+     label = PCAloadings_2$Variables)
+
+path_fig <- paste0("results/figures/PCA_clustering_97_patients_3_clusters_lipidomics_loadings_HC.pdf")
+dev.copy(pdf, path_fig, height = 4, width = 6)
+dev.off()
+```
+
+## pca based on cluster (metabolomics)
+```{r}
+pca_data <- data_met
+#pca_data <- merge(pca_data_2, mic, by = "X")
+pca_data_3 <- pca_data
+pca_data$X <- NULL
+pca_data[is.na(pca_data)] <-  0
+remove <- which(apply(pca_data, 2, var)==0)
+pca_data <- pca_data[,-remove]
+pca <- prcomp(pca_data[,-1], scale. = TRUE)
+df_out <- as.data.frame(pca$x)
+df_out$group <- as.factor(pca_data$cluster)
+head(df_out)
+pc1 <- data.frame(patient = pca_data_3$X, df_out$group, df_out$PC1)
+write.csv(pc1, "processing/pc1_variable_met.csv")
+```
+
+```{r}
+x <- project.pca.proportionvariances <- ((pca$sdev^2) / (sum(pca$sdev^2)))*100
+a1 <- x[1]
+a2 <- x[2]
+barplot(project.pca.proportionvariances, cex.names=1, xlab=paste("Principal component (PC), 1-", length(pca$sdev)), ylab="Proportion of variation (%)", main="Scree plot", ylim=c(0,100))
+PCAloadings <- data.frame(Variables = rownames(pca$rotation), pca$rotation)
+PCAloadings_2 <- PCAloadings
+x <- abs(PCAloadings_2$PC1) < 0.15 & abs(PCAloadings_2$PC2) < 0.15
+PCAloadings_2$PC1[x] <- NA
+PCAloadings_2$PC2[x] <- NA
+PCAloadings_2$Variables[x] <- NA
+```
+
+```{r}
+gg <- data.frame(cluster=factor(df_out$group), x=df_out$PC1, y=df_out$PC2)
+centroids <- aggregate(cbind(x,y)~cluster,data=gg,mean)
+gg <- merge(gg,centroids,by="cluster",suffixes=c("",".centroid"))
+
+ggplot(gg)+
+  geom_point(aes(x=x,y=y,color=cluster, fill = cluster), size=3)+
+  stat_ellipse(geom = "polygon", aes(x=x,y=y,color=cluster, fill = cluster), alpha = 0.3) +
+  geom_point(data=centroids, aes(x=x, y=y, color=cluster, fill = cluster), size = 5, alpha = 0.9, shape = 19)+ 
+  geom_segment(aes(x=x.centroid, y=y.centroid, xend=x, yend=y, color=cluster))+
+  theme(legend.title=element_text(size=15),legend.text=element_text(size=12),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=15),axis.title.x=element_text(size=15),
+        axis.text.y=element_text(size=18),axis.text.x=element_text(size=18))+ scale_color_manual(values=col)+ scale_fill_manual(values=col)+
+  xlab(paste0("PC1: ",round(a1,0),"% variance"))+
+  ylab(paste0("PC2: ",round(a2,0),"% variance"))+ 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)))
+
+path_fig <- paste0("results/figures_2/PCA_clustering_97_patients_3_clusters_metabolomics.pdf")
+dev.copy(pdf, path_fig, height = 4, width = 6)
+dev.off()
+```
+```{r}
+ggplot(df_out, aes( x= PC1, y = PC2, color = group))+ geom_point(size = 5, alpha = 0.9, shape = 19)+ 
+  theme(legend.title=element_text(size=15),legend.text=element_text(size=12),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=15),axis.title.x=element_text(size=15),
+        axis.text.y=element_text(size=18),axis.text.x=element_text(size=18))+ scale_color_manual(values=col)+
+  xlab(paste0("PC1: ",round(a1,0),"% variance")) +
+  ylab(paste0("PC2: ",round(a2,0),"% variance"))+ 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)), legend.position = "none")+
+  geom_segment(data = PCAloadings_2, aes(x = 0, y = 0, xend = (PC1*90),
+     yend = (PC2*90)), arrow = arrow(length = unit(1/2, "picas")),
+     color = "black")+
+  annotate("text", x = (PCAloadings_2$PC1*90), y = (PCAloadings_2$PC2*90),
+     label = PCAloadings_2$Variables)
+
+path_fig <- paste0("results/figures/PCA_clustering_97_patients_3_clusters_metabolomics_loadings.pdf")
+dev.copy(pdf, path_fig, height = 4, width = 6)
+dev.off()
+```
+```{r}
+
+
+#pca_data
+```
+
+```{r}
+pca_data_2 <- merge(cluster, data_met, by = "X")
+data_lip$cluster <- NULL
+pca_data_2 <- merge(pca_data_2, data_lip, by = "X")
+mic$cluster <- NULL
+pca_data <- merge(pca_data_2, mic, by = "X")
+pca_data$X <- NULL
+cluster_2 <- pca_data$cluster.x
+pca_data$cluster.x <- NULL
+pca_data$cluster.y <- NULL
+pca_data$cluster <- NULL
+remove <- which(apply(pca_data, 2, var)==0)
+pca_data <- pca_data[,-remove]
+pca_data[is.na(pca_data)] <-  0
+
+pca <- prcomp(pca_data, scale. = TRUE)
+df_out <- as.data.frame(pca$x)
+df_out$group <- cluster_2
+head(df_out)
+```
+
+```{r}
+x <- project.pca.proportionvariances <- ((pca$sdev^2) / (sum(pca$sdev^2)))*100
+a1 <- x[1]
+a2 <- x[2]
+barplot(project.pca.proportionvariances, cex.names=1, xlab=paste("Principal component (PC), 1-", length(pca$sdev)), ylab="Proportion of variation (%)", main="Scree plot", ylim=c(0,100))
+PCAloadings <- data.frame(Variables = rownames(pca$rotation), pca$rotation)
+PCAloadings_2 <- PCAloadings
+
+x <- abs(PCAloadings_2$PC1) < 0.06 & abs(PCAloadings_2$PC2) < 0.06
+PCAloadings_2$PC1[x] <- NA
+PCAloadings_2$PC2[x] <- NA
+PCAloadings_2$Variables[x] <- NA
+```
+
+```{r}
+df_out$group <- factor(df_out$group, levels = c("Ctrl", 1, 2, 3))
+```
+
+```{r}
+gg <- data.frame(cluster=factor(df_out$group), x=df_out$PC1, y=df_out$PC2)
+centroids <- aggregate(cbind(x,y)~cluster,data=gg,mean)
+gg <- merge(gg,centroids,by="cluster",suffixes=c("",".centroid"))
+
+ggplot(gg)+
+  geom_point(aes(x=x,y=y,color=cluster, fill = cluster), size=3)+
+  stat_ellipse(geom = "polygon", aes(x=x,y=y,color=cluster, fill = cluster), alpha = 0.3) +
+  geom_point(data=centroids, aes(x=x, y=y, color=cluster, fill = cluster), size = 5, alpha = 0.9, shape = 19)+ 
+  geom_segment(aes(x=x.centroid, y=y.centroid, xend=x, yend=y, color=cluster))+
+  theme(legend.title=element_text(size=15),legend.text=element_text(size=12),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=15),axis.title.x=element_text(size=15),
+        axis.text.y=element_text(size=18),axis.text.x=element_text(size=18))+ scale_color_manual(values=col)+ scale_fill_manual(values=col)+
+  xlab(paste0("PC1: ",round(a1,0),"% variance"))+
+  ylab(paste0("PC2: ",round(a2,0),"% variance"))+ 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)))
+
+path_fig <- paste0("results/figures/PCA_clustering_97_patients_3_clusters_3_layers.pdf")
+dev.copy(pdf, path_fig, height = 6, width = 7)
+dev.off()
+```
+
+```{r}
+ggplot(df_out, aes( x= PC1, y = PC2, color = group))+ geom_point(size = 5, alpha = 0.9, shape = 19)+ 
+  theme(legend.title=element_text(size=15),legend.text=element_text(size=12),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=15),axis.title.x=element_text(size=15),
+        axis.text.y=element_text(size=18),axis.text.x=element_text(size=18))+ scale_color_manual(values=col)+
+  xlab(paste0("PC1: ",round(a1,0),"% variance")) +
+  ylab(paste0("PC2: ",round(a2,0),"% variance"))+ 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)), legend.position = "none")+
+  geom_segment(data = PCAloadings_2, aes(x = 0, y = 0, xend = (PC1*400),
+     yend = (PC2*400)), arrow = arrow(length = unit(1/2, "picas")),
+     color = "black")+
+  annotate("text", x = (PCAloadings_2$PC1*400), y = (PCAloadings_2$PC2*400),
+     label = PCAloadings_2$Variables)
+
+path_fig <- paste0("results/figures/PCA_clustering_97_patients_3_clusters_global_loadings.pdf")
+dev.copy(pdf, path_fig, height = 4, width = 6)
+dev.off()
+```
+## UMAP
+
+```{r}
+pca_data_2
+clinical <- read.csv("processing/clinical_ordered_microbiome_project.csv")
+clinical <- select(clinical, X, AGE, BMI, GENDER, METS, X3rd_Drug, VAT, Combined_therapy)
+pca_data_4 <- merge(clinical, pca_data_2, by = "X")
+```
+```{r}
+
+```
+
+## run umap
+```{r}
+clinical_2 <- pca_data_4[,2:9]
+data_2 <- pca_data_4[,c(10:1845)]
+clinical_2$METS <- as.factor(clinical_2$METS)
+clinical_2$cluster <- as.factor(clinical_2$cluster)
+```
+
+```{r}
+clinical_2$AGE[clinical_2$AGE < 55] <- "<55"
+clinical_2$AGE[clinical_2$AGE >= 55 & clinical_2$AGE < 65] <- "55<x<65"
+clinical_2$AGE[clinical_2$AGE >= 65] <- ">65"
+clinical_2$AGE <- factor(clinical_2$AGE, levels = c("<55", "55<x<65", ">65"))
+```
+
+```{r}
+names(clinical_2)
+```
+```{r}
+clinical_2$BMI[clinical_2$BMI >= 35] <- "extremely obese"
+clinical_2$BMI[clinical_2$BMI < 18.5] <- "underweight"
+clinical_2$BMI[clinical_2$BMI >= 18.5 & clinical_2$BMI < 25] <- "normal"
+clinical_2$BMI[clinical_2$BMI >= 25 & clinical_2$BMI < 30] <- "overweight"
+clinical_2$BMI[clinical_2$BMI >= 30 & clinical_2$BMI < 35] <- "obese"
+
+clinical_2$BMI <- factor(clinical_2$BMI, levels = c("underweight", "normal", "overweight", "obese", "extremely obese"))
+```
+
+```{r}
+clinical_2$Combined_therapy <- gsub(".*ABC.*", "ABC", clinical_2$Combined_therapy)
+clinical_2$Combined_therapy <- gsub(".*AZT.*", "AZT", clinical_2$Combined_therapy)
+clinical_2$Combined_therapy <- gsub(".*TAF.*", "TAF", clinical_2$Combined_therapy)
+clinical_2$Combined_therapy <- gsub(".*TDF.*", "TDF", clinical_2$Combined_therapy)
+clinical_2$Combined_therapy <- gsub(".*\\/.*", "Other", clinical_2$Combined_therapy)
+clinical_2$Combined_therapy <- factor(clinical_2$Combined_therapy, levels = c("ABC", "AZT", "TAF", "TDF", "Other"))
+```
+```{r}
+names(clinical_2)
+```
+```{r}
+clinical_2$X3rd_Drug <- as.vector(clinical_2$X3rd_Drug)
+clinical_2$X3rd_Drug[is.na(clinical_2$X3rd_Drug)] <- "Unknown"
+clinical_2$X3rd_Drug <- as.factor(clinical_2$X3rd_Drug)
+```
+
+
+
+```{r}
+set_colors <- list(c("#85ab03","#0385ab","#ab0385"),
+                   c("#bb6897","#97bb68", "#6897bb","#686ebb","#68bbb6"),
+                   c("#da2433","#2433da"),
+                   c("#3e7054","#70543e"),
+                   c("#e6e48f","#8f91e6", "#b45f06", "grey"),
+                   c("#fedfe6", "#7f3142"),
+                    c("#946C0C", "#741b47","#47741b","#1b4774", "#741c1b"),
+                   col)
+ 
+```
+                
+```{r}
+names(clinical_2)[7] <- "first_drug"
+```
+
+                
+              +
+      scale_color_manual(name = test_clinical[[i]], values = set_colors[[i]])
+```{r}
+library(umap)
+```
+
+
+
+```{r}
+test_clinical <- colnames(clinical_2)
+
+for (i in 1:length(test_clinical)){
+  prot.data = data_2
+  prot.labels = clinical_2[,test_clinical[[i]]]
+  print(prot.labels)
+  
+  prot.umap = umap(prot.data)
+  prot.umap
+  
+  data <- prot.umap$data
+  layout <- prot.umap$layout
+  data_umap <- cbind(data, layout)
+  x = ncol(data_umap)
+  y = ncol(data_umap)-1
+  print(x)
+  print(y)
+  colnames(data_umap)[y:x] <- c("UMAP1", "UMAP2")
+  data_umap <-data.frame(data_umap)
+  
+  if (is.factor(prot.labels)==TRUE) {
+    data_umap %>% 
+  mutate(Condition = prot.labels) %>%
+  ggplot(aes(UMAP1, UMAP2), fill = Condition)+ geom_point(size = 5, alpha = 1, shape = 21, aes(fill = Condition, color = Condition))+ 
+      theme(legend.title=element_text(size=10),legend.text=element_text(size=10),
+            legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+            axis.title.y=element_text(size=16, color = "black", face="bold"),axis.title.x=element_text(size=16, color = "black", face="bold"),
+            axis.text.y=element_text(size=14, color = "black"),axis.text.x=element_text(size=14, color = "black"))+ 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0))) + 
+      scale_fill_manual(name = test_clinical[[i]], values=set_colors[[i]]) + 
+      scale_color_manual(name = test_clinical[[i]], values=set_colors[[i]])
+  }else{
+    data_umap %>% 
+  mutate(Condition = prot.labels) %>%
+  ggplot(aes(UMAP1, UMAP2), fill = Condition)+ geom_point(size = 5, alpha = 1, shape = 21, aes(fill = Condition, color = Condition))+ 
+      theme(legend.title=element_text(size=10),legend.text=element_text(size=10),
+            legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+            axis.title.y=element_text(size=16, color = "black", face="bold"),axis.title.x=element_text(size=16, color = "black", face="bold"),
+            axis.text.y=element_text(size=14, color = "black"),axis.text.x=element_text(size=14, color = "black"))+ 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0))) + scale_fill_gradientn(colours=set_colors[[i]])+ scale_color_gradientn(colours=set_colors[[i]])
+    
+  }
+  
+  
+  ggsave(paste0("results/figures/umap/umap_3_layers_", test_clinical[[i]],".pdf"), width = 7, height = 6)
+}
+                   
+```
+
+
+
+

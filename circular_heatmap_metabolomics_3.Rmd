@@ -1,0 +1,329 @@
+---
+title: "heatmaps oxphos"
+output: html_notebook
+---
+
+
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+
+```{r}
+library(reshape)
+library(ggplot2)
+library(ggnewscale)   ## The magic
+library(dplyr)
+```
+
+x <- data.frame(data[,c(8:13)] < 0.001)
+data <- data[rowSums(x) > 0L,]
+```{r}
+cutoff <- 0.005
+data <- read.csv("processing/processing_KW_metabolomics.csv")
+data$X <- NULL
+data$LFC_G1G2[data$FDR_G1G2 >= cutoff] <- NA
+data$LFC_G1G3[data$FDR_G1G3 >= cutoff] <- NA
+data$LFC_G2G3[data$FDR_G2G3 >= cutoff] <- NA
+data$LFC_CTG1[data$FDR_CTG1 >= cutoff] <- NA
+data$LFC_CTG2[data$FDR_CTG2 >= cutoff] <- NA
+data$LFC_CTG3[data$FDR_CTG3 >= cutoff] <- NA
+
+rownames(data) <- data$Metabolites
+data <- data[,c(2:7)]
+data <- data[rowSums(is.na(data)) != ncol(data), ]
+#dge_HC_HIV <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/LIMMA_results_metabolites_HIV-Ctrl_filt.csv")
+#dge_HC_HIV <- select(dge_HC_HIV, X, logFC)
+#names(dge_HC_HIV) <- c("Metabolites", "LFC_HC_HIV")
+#data <- merge(data, dge_HC_HIV)
+data$Metabolites <- rownames(data)
+```
+
+```{r}
+data_heatmap <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/metabolites_pathways.csv", stringsAsFactors = F)
+data_heatmap <- data_heatmap[data_heatmap$SUPER.PATHWAY != "",]
+data_heatmap$SUPER.PATHWAY[data_heatmap$SUPER.PATHWAY == "Energy"] <- "Other"
+data_heatmap$SUPER.PATHWAY[data_heatmap$SUPER.PATHWAY == "Partially Characterized Molecules"] <- "Other"
+data_heatmap$SUPER.PATHWAY[data_heatmap$SUPER.PATHWAY == "Peptide"] <- "Other"
+data_heatmap$SUPER.PATHWAY[data_heatmap$SUPER.PATHWAY == "Carbohydrate"] <- "Other"
+pathways <- c("Amino Acid", "Cofactors and Vitamins", "Lipid", "Nucleotide","Xenobiotics", "Other")
+#table(data_heatmap$SUB.PATHWAY)
+data_heatmap$SUB.PATHWAY <- NULL
+data_heatmap <- data_heatmap[order(data_heatmap$SUPER.PATHWAY),]
+data_heatmap <- melt(data_heatmap)
+names(data_heatmap)[1:2] <- c("Metabolites", "variable")
+
+data_heatmap$value <- as.integer(factor(data_heatmap$variable, levels = c("Amino Acid", "Cofactors and Vitamins", "Lipid", "Nucleotide","Xenobiotics", "Other")))
+data_heatmap$variable <- "Pathway"
+
+data_heatmap <- data_heatmap[data_heatmap$Metabolites %in% data$Metabolites,]
+
+values_heatmap <- as.factor(data_heatmap$value)
+```
+
+## correlations metabolites / age - gender - BMI
+```{r}
+data_met <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/metabolomics_log2_plusHC.csv", check.names = FALSE)
+patients <- data_met$X
+data_met <- data_met[,colnames(data_met) %in% as.vector(data$Metabolites)]
+
+data_met <- data_met[,order(match(colnames(data_met),data_heatmap[,1]))]
+
+data_met$X <- patients
+
+data_2 <- read.csv("processing/clinical_data_clean_for_regression_models.csv")
+data_2$AGE <- as.numeric(data_2$AGE)
+data_2$GENDER <- as.factor(data_2$GENDER)
+data_2$BMI <- as.numeric(data_2$BMI)
+data_2 <- select(data_2, X, AGE, BMI, GENDER)
+data_met <- merge(data_2, data_met, by = "X")
+
+
+plm <- as.data.frame(matrix(0,nrow=5,ncol=4))
+m = 1
+
+for (i in 5:ncol(data_met)) {
+  for (j in 2:3) {
+    clinical <- data_met[,j]
+    met <- data_met[,i]
+    plm[m,1] <- cor(clinical, met, method = c("spearman"))
+    plm[m,2] <- cor.test(clinical, met, method = c("spearman"))$p.value
+    plm[m,3] <- names(data_met)[j]
+    plm[m,4] <- names(data_met)[i]
+    m = m + 1
+  }
+}
+
+colnames(plm) <- c("R", "pvalue", "clinical", "metabolite")
+plm$R[plm$pvalue > 0.1 & abs(plm$R) < 0.2] <- NA
+sigplm_age_bmi <- plm
+
+write.csv(plm, "results/results_correlation_metabolites_age_BMI.csv")
+write.csv(sigplm_age_bmi, "results/results_correlation_metabolome_age_BMI.csv")
+
+plm <- as.data.frame(matrix(0,nrow=4,ncol=3))
+m = 1
+
+for (i in 5:ncol(data_met)) {
+  clinical <- data_met[,4]
+  met <- data_met[,i]
+  aov1 = aov(met ~ clinical)
+  x <-unlist(summary(aov1)[[1]][5][1])
+  plm[m,1] <- x[1]
+  plm[m,2] <- names(data_met)[4]
+  plm[m,3] <- names(data_met)[i]
+  m = m + 1
+}
+
+colnames(plm) <- c("pvalue", "clinical", "metabolite")
+plm$pvalue[plm$pvalue > 0.1] <- NA #look only at those with adjusted p.value < 0.05
+sigplm <- plm
+
+write.csv(plm, "results/results_correlation_metabolites_gender.csv")
+write.csv(sigplm, "results/results_correlation_metabolome_gender.csv")
+```
+
+```{r}
+sigplm <- select(sigplm, metabolite, clinical, pvalue)
+names(sigplm) <- c("Metabolites", "variable", "value")
+```
+
+```{r}
+sigplm_age_bmi <- select(sigplm_age_bmi, metabolite, clinical, R)
+sigplm_age_bmi <- melt(sigplm_age_bmi)
+sigplm_age_bmi$variable <- NULL
+names(sigplm_age_bmi) <- c("Metabolites", "variable", "value")
+sigplm_2 <- sigplm_age_bmi[sigplm_age_bmi$variable == "AGE",]
+sigplm_3 <- sigplm_age_bmi[sigplm_age_bmi$variable == "BMI",]
+```
+
+```{r}
+sigplm <- rbind(sigplm, sigplm_2, sigplm_3)
+```
+
+```{r}
+sigplm_n <- sigplm[!is.na(sigplm$value),]
+table(sigplm_n$variable)
+```
+
+
+```{r}
+data <- data[order(match(data[,7],data_heatmap[,1])),]
+head(data)
+
+data <- melt(data)
+```
+```{r}
+data_heatmap_2 <- rbind(data_heatmap, sigplm)
+data_heatmap_2 <- rbind(data_heatmap_2, data)
+```
+
+```{r}
+data_heatmap_2$var2 <- data_heatmap_2$variable
+data_heatmap_2$var2 <- as.integer(factor(data_heatmap_2$var2, levels = c("Pathway", "GENDER", "AGE", "BMI", "LFC_G1G2", "LFC_G1G3", "LFC_G2G3", "LFC_CTG1", "LFC_CTG2", "LFC_CTG3")))
+```
+
+```{r}
+table(data_heatmap_2$var2)
+```
+```{r}
+x <- data_heatmap_2[1:25,1]
+x
+m2 <- data_heatmap_2[data_heatmap_2$Metabolites %in% x,]
+m2$Metabolites <- as.integer(as.factor(m2$Metabolites))
+m2$value <- NA
+```
+
+```{r}
+data_heatmap_2 <- rbind(data_heatmap_2, m2)
+```
+
+```{r}
+tf3.m <- data_heatmap_2
+```
+
+```{r}
+tf3.labs <- subset(tf3.m, variable == "LFC_CTG3")
+tf3.labs$ang <- seq(from=(360/nrow(tf3.labs))/1.5, 
+                    to=(1.5* (360/nrow(tf3.labs)))-360, 
+                    length.out=nrow(tf3.labs))+80
+
+tf3.labs$hjust <- 0
+tf3.labs$hjust[which(tf3.labs$ang < -90)] <- 1
+tf3.labs$ang[which(tf3.labs$ang < -90)] <- (180+tf3.labs$ang)[which(tf3.labs$ang < -90)]
+rownames(tf3.labs) <- 1:nrow(tf3.labs)
+```
+
+```{r}
+high_col <-"#df764c"
+low_col <- "#4cb5df"
+col_b <- "white"
+```
+
+```{r}
+z <- data_heatmap_2$Metabolites[data_heatmap_2$variable == "LFC_CTG2" & !is.na(data_heatmap_2$value)]
+x <- data_heatmap_2$Metabolites[data_heatmap_2$variable == "LFC_CTG1" & !is.na(data_heatmap_2$value)]
+a <- data_heatmap_2$Metabolites[data_heatmap_2$variable == "LFC_CTG3" & !is.na(data_heatmap_2$value)]
+a <- data_heatmap_2$Metabolites[data_heatmap_2$variable == "LFC_G2G3" & !is.na(data_heatmap_2$value)]
+b <- data_heatmap_2$Metabolites[data_heatmap_2$variable == "LFC_G1G3" & !is.na(data_heatmap_2$value)]
+
+a_2 <- data_heatmap_2[which(data_heatmap_2$Metabolites %in% a),]
+b_2 <- data_heatmap_2[which(data_heatmap_2$Metabolites %in% b),]
+
+a_2 <- a_2[a_2$variable == "Pathway" & !is.na(a_2$value),]
+b_2 <- b_2[b_2$variable == "Pathway" & !is.na(b_2$value),]
+
+
+x_2 <- data_heatmap_2[which(data_heatmap_2$Metabolites %in% x),]
+z_2 <- data_heatmap_2[which(data_heatmap_2$Metabolites %in% z),]
+
+x_2 <- x_2[x_2$variable == "Pathway",] 
+z_2 <- z_2[z_2$var2 == 1,]
+
+table(a_2$value)
+table(b_2$value)
+
+table(x_2$value)
+
+table(z_2$value)
+```
+& 
+```{r}
+mycols_met <- c("#A1CBE1", "#ACDC80", "#F19796","#FF725C","#2A4E6C","#C9B0D5")
+```
+
+```{r}
+tf3.m$value[which(tf3.m$value < -2)] <- -2
+tf3.m$value[which(tf3.m$value >= 2)] <- 2
+```
+
+```{r}
+tf3.m$value[tf3.m$variable == "Pathway"] <- c(values_heatmap, rep(NA, 25))
+```
+
+```{r}
+ptf3<-ggplot( ) +
+  geom_tile(data=tf3.m[tf3.m$variable == "Pathway",],
+            aes(x=as.numeric(rownames(tf3.labs)),y=var2, fill=factor(value))) + scale_fill_manual("Pathway", values = mycols_met, 
+                      labels = pathways) +
+  
+  new_scale("fill") +   #### MAGIC
+  geom_tile(data=tf3.m[tf3.m$variable == "GENDER",],
+            aes(x=as.numeric(rownames(tf3.labs)),y=var2, fill=value),
+            colour=col_b, size = 0.1) +
+  scale_fill_gradient2(midpoint=0, mid="#c0b5a3", low="#332a1c", high="white", name="GENDER", na.value="white")+
+  
+  new_scale("fill") +   #### MAGIC
+  geom_tile(data=tf3.m[tf3.m$variable == "AGE",],
+            aes(x=as.numeric(rownames(tf3.labs)),y=var2, fill=value),
+            colour=col_b, size = 0.1) +
+  scale_fill_gradient2(midpoint=0, mid="white", low="#1b7328", high="#731b66", name="AGE", na.value="white")+
+  
+  
+  new_scale("fill") +   #### MAGIC
+  geom_tile(data=tf3.m[tf3.m$variable == "BMI",],
+            aes(x=as.numeric(rownames(tf3.labs)),y=var2, fill=value),
+            colour=col_b, size = 0.1) +
+  scale_fill_gradient2(midpoint=0, mid="white", low="#281b73", high="#66731b", name="BMI", na.value="white")+
+  
+  new_scale("fill") +   #### MAGIC
+  geom_tile(data=tf3.m[tf3.m$variable == "LFC_G1G2",],
+            aes(x=as.numeric(rownames(tf3.labs)),y=var2, fill=value),
+            colour=col_b, size = 0.1) +
+  scale_fill_gradient2(midpoint=0, mid="white", low=low_col, high=high_col, limits = c(-2, 2), name="LFC_G1G2", na.value="white")+
+  
+  new_scale("fill") +   #### MAGIC
+  geom_tile(data=tf3.m[tf3.m$variable == "LFC_G1G3",],
+            aes(x=as.numeric(rownames(tf3.labs)),y=var2, fill=value),
+            colour=col_b, size = 0.1) +
+  scale_fill_gradient2(midpoint=0, mid="white", low=low_col, high=high_col, limits = c(-2, 2), name="LFC_G1G3", na.value="white")+
+  
+  new_scale("fill") +   #### MAGIC
+  geom_tile(data=tf3.m[tf3.m$variable == "LFC_G2G3",],
+            aes(x=as.numeric(rownames(tf3.labs)),y=var2, fill=value),
+            colour=col_b, size = 0.1) +
+  scale_fill_gradient2(midpoint=0, mid="white", low=low_col, high=high_col, limits = c(-2, 2), name="LFC_G2G3", na.value="white")+
+  
+  new_scale("fill") +   #### MAGIC
+  geom_tile(data=tf3.m[tf3.m$variable == "LFC_CTG1",],
+            aes(x=as.numeric(rownames(tf3.labs)),y=var2, fill=value),
+            colour=col_b, size = 0.1) +
+  scale_fill_gradient2(midpoint=0, mid="white", low=low_col, high=high_col, limits = c(-2, 2), name="LFC_CTG1", na.value="white")+
+  
+  new_scale("fill") +   #### MAGIC
+  geom_tile(data=tf3.m[tf3.m$variable == "LFC_CTG2",],
+            aes(x=as.numeric(rownames(tf3.labs)),y=var2, fill=value),
+            colour=col_b, size = 0.1) +
+  scale_fill_gradient2(midpoint=0, mid="white", low=low_col, high=high_col, limits = c(-2, 2), name="LFC_CTG2", na.value="white")+
+  
+  new_scale("fill") +   #### MAGIC
+  geom_tile(data=tf3.m[tf3.m$variable == "LFC_CTG3",],
+            aes(x=as.numeric(rownames(tf3.labs)),y=var2, fill=value),
+            colour=col_b, size = 0.1) +
+  scale_fill_gradient2(midpoint=0, mid="white", low=low_col, high=high_col, limits = c(-2, 2), name="LFC_CTG3", na.value="white")+
+  
+  ylim(c(-2, max(tf3.m$var2) + 1.5)) +
+  coord_polar(theta="x") +
+  theme(panel.background = element_blank(), # bg of the panel
+        panel.grid.major = element_blank(), # get rid of major grid
+        panel.grid.minor = element_blank(), # get rid of minor grid
+        axis.title=element_blank(),
+        panel.grid=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks=element_blank(),
+        axis.text.y=element_text(size=0))+
+  geom_text(data=tf3.labs, 
+            aes(x=as.numeric(rownames(tf3.labs)), 
+                y=var2+0.75, 
+                label=Metabolites, angle=ang, hjust=hjust), 
+            size=2.5)
+plot(ptf3)
+
+ggsave("test_circular_plot_final.pdf", height = 10, width = 10)
+```

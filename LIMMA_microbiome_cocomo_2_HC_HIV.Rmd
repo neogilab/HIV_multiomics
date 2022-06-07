@@ -1,0 +1,90 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+
+```{r}
+library(xlsx)
+library(gplots)
+library(ComplexHeatmap)
+library(circlize)
+library(limma)
+library("colorspace")
+library(ggplot2)
+library(dplyr)
+library(scales)
+```
+
+```{r}
+col <- c("#6b8150", "#2273C3","#EFC144","#868686")
+col_border <- darken(col, 0.5)
+```
+
+```{r}
+cluster <- read.csv("processing/cluster_SNF_3_omics_3_clusters_plusHC.csv")
+cluster$X <- NULL
+names(cluster)[2] <- "X"
+```
+
+```{r}
+data_met <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/metabolomics_log2_plusHC.csv", check.names = FALSE)
+data_met$cluster <- factor(data_met$cluster, levels = c("Ctrl", 1, 2, 3))
+```
+
+## LIMMA metabolites
+```{r}
+pca_data_2 <- data_met
+```
+
+```{r}
+group <- NA
+group <- ifelse(pca_data_2$cluster == "Ctrl", "Ctrl", "HIV")
+group <- as.factor(group)
+design <- model.matrix( ~ 0 + group)
+design
+```
+
+```{r}
+fit <- lmFit(t(pca_data_2[,-c(1,2)]), design)
+```
+
+```{r}
+comp <- c("groupHIV-groupCtrl")
+```
+
+```{r}
+cont.matrix <- makeContrasts(Ctrl_C1 = comp[1],
+                             levels=design)
+fit.cont <- contrasts.fit(fit, cont.matrix)
+fit.cont <- eBayes(fit.cont)
+top_table_1 <- topTable(fit.cont, coef=1, adjust="BH", n = Inf, sort.by = "P")
+top_table_1$Comp <- "HIV-Ctrl"
+top_table_1$BIOCHEMICAL <- rownames(top_table_1)
+top_table_1 <- select(top_table_1, BIOCHEMICAL, logFC, P.Value, adj.P.Val, Comp)
+write.table(top_table_1$BIOCHEMICAL[top_table_1$adj.P.Val < 0.1], paste0("processing/GSEA/met_HIV-Ctrl.txt"), quote = FALSE, row.names = F)
+top_table <- top_table_1
+top_table <- top_table[complete.cases(top_table),]
+path_table <- paste0("results/LIMMA_results_metabolites_HIV-Ctrl.csv")
+
+print(path_table)
+write.csv(top_table, file =path_table)
+
+DF_top_table <-top_table[top_table$adj.P.Val < 0.1, ]
+
+path_results <- paste0("results/LIMMA_results_metabolites_HIV-Ctrl_filt.csv")
+
+write.csv(DF_top_table, file = path_results)
+```
+
+
+

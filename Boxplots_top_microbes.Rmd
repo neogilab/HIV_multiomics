@@ -1,0 +1,154 @@
+---
+title: "Boxplots top microbes"
+output: html_notebook
+---
+
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+## family level
+## alpha diversity
+## beta diversity
+
+relative abundance
+
+```{r}
+library(ggpubr)
+```
+
+```{r}
+col <- c("#6b8150", "#2273C3","#EFC144","#868686")
+```
+
+
+## load clusters
+```{r}
+cluster <- read.csv("processing/cluster_SNF_3_omics_3_clusters_plusHC.csv")
+cluster$X <- NULL
+names(cluster)[2] <- "X"
+cluster <- cluster[!is.na(cluster$cluster),]
+```
+
+## load tax_table
+```{r}
+tax_table <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/tax_table_COCOMO.csv", header = FALSE)
+names(tax_table) <- c("X","Super_group", "Division", "Class", "Order", "Family", "Genus")
+```
+
+```{r}
+top_family <- c("Bacteroidaceae", "Lachnospiraceae", "Succinivibrionaceae", "Veillonellaceae", "Prevotellaceae")
+```
+
+
+### load data
+```{r}
+mic <- read.csv("processing/relative_abundance_table.csv", row.names = 1)
+mic <- data.frame(t(mic))
+mic$X <- gsub("X","", rownames(mic))
+mic <- merge(cluster, mic, by = "X")
+cluster <- mic$cluster
+
+mic_2 <- data.frame(t(mic[,-c(1:2)]))
+mic_2 <- mic_2[apply(mic_2, 1, var) >= 0.0001, ]
+
+mic_2$X <- rownames(mic_2)
+mic_2 <- merge(tax_table, mic_2, by = "X")
+mic_2 <- mic_2[mic_2$Family %in% top_family,]
+```
+
+```{r}
+my_comparisons <- list(c("Ctrl", 1), c("Ctrl", 2), c("Ctrl", 3), c(1, 2), c(1, 3), c(2, 3))
+```
+
+```{r}
+mic_3 <- mic_2[-c(1:6)]
+mic_3 <- mic_3[mic_3$Genus != "uncultured",]
+rownames(mic_3) <- mic_3$Genus
+mic_3$Genus <- NULL
+mic_4 <- data.frame(condition = cluster, t(mic_3))
+mic_4$condition <- factor(mic_4$condition, levels = c("Ctrl", "1", "2", "3"))
+```
+
+```{r}
+library("colorspace")
+col_border <- darken(col, 0.5)
+```
+
+```{r}
+for (i in 2:ncol(mic_4)) {
+a <- ggplot(mic_4, aes(x = condition, y = mic_4[,i], fill = condition, color = condition)) + 
+    geom_boxplot(position=position_dodge(1), size = 0.5, alpha =0.8, outlier.shape = NA)+ 
+    labs(x="Condition", y = paste0(colnames(mic_4)[i])) + 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          legend.position="bottom",
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0))) + geom_jitter(shape=16, size=0.5, color="black", position=position_jitter(0.05)) + scale_fill_manual(values=col)+ scale_color_manual(values=col_border)
+  ggsave(paste0("results/figures/boxplots/top_families_genus_", colnames(mic_4)[i], "_2.pdf"), height = 4, width = 3)
+}
+```
+
+
+
+## load clusters
+```{r}
+cluster <- read.csv("processing/cluster_SNF_3_omics_3_clusters_plusHC.csv")
+cluster$X <- NULL
+names(cluster)[2] <- "X"
+cluster <- cluster[!is.na(cluster$cluster),]
+```
+
+## load data
+```{r}
+family <- read.csv("processing/data_family_clean.csv")
+family_data <- merge(cluster, family, by = "X")
+family_data$X.1 <- NULL
+family_data_2 <- family_data
+family_data$X <- NULL
+```
+
+```{r}
+family_data <- family_data[, colnames(family_data) %in% c("cluster",top_family)]
+```
+
+```{r}
+family_data$cluster <- factor(family_data$cluster, levels = c("Ctrl", "1", "2", "3"))
+```
+/home/flomik/Desktop/Code-PHD/3_layers_integration/results/figures/boxplots/top_families_genus_Bacteroides.pdf
+
+```{r}
+for (i in 2:ncol(family_data)) {
+  a <- ggplot(family_data, aes(x = cluster, y = family_data[,i], fill = cluster, color = cluster)) + 
+    geom_boxplot(position=position_dodge(1), size = 0.5, alpha =0.8, outlier.shape = NA)+ 
+    labs(x="Condition", y = paste0(colnames(family_data)[i]))+ 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          legend.position="bottom",
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0))) + geom_jitter(shape=16, size=0.5, color="black", position=position_jitter(0.02)) + scale_fill_manual(values=col)+ scale_color_manual(values=col_border)
+  ggsave(paste0("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/figures/boxplots/top_families_family_", colnames(family_data)[i], "_2.pdf"), height = 4, width = 3)
+}
+```

@@ -1,0 +1,164 @@
+---
+title: "Gmt files"
+output: html_notebook
+---
+
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+
+
+
+
+
+## KEGG
+## retrieve lipids 
+
+## metabolome
+```{r}
+met <- read.csv("processing/metabolites_pathways.csv")
+met <- met[met$SUPER.PATHWAY != "",]
+```
+
+### create gmt file
+```{r}
+sink("processing/Metabolon_met_2l.gmt")
+
+pathway.compounds = unique(met$SUPER.PATHWAY)
+
+for (i in pathway.compounds){
+  list_met <- met[met$SUPER.PATHWAY == i,]
+  list_met <- list_met$BIOCHEMICAL
+  cat(sprintf("%s\t\t%s", tolower(i), paste(list_met, collapse="\t")), "\n")
+}
+
+subpathway.compounds = unique(met$SUB.PATHWAY)
+
+for(j in subpathway.compounds){
+  sub_list_met <- met[met$SUB.PATHWAY == j,]
+  sub_list_met <- sub_list_met$BIOCHEMICAL
+  cat(sprintf("%s\t\t%s", tolower(j), paste(sub_list_met, collapse=" ")), "\n")
+}
+
+sink()
+```
+
+```{r}
+sink("processing/Metabolon_met.gmt")
+
+subpathway.compounds = unique(met$SUB.PATHWAY)
+
+for(j in subpathway.compounds){
+  sub_list_met <- met[met$SUB.PATHWAY == j,]
+  sub_list_met <- sub_list_met$BIOCHEMICAL
+  cat(sprintf("%s\t\t%s", tolower(j), paste(sub_list_met, collapse=" ")), "\n")
+}
+
+sink()
+```
+
+
+## lipids
+```{r}
+lip <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/lipids_pathways.csv")
+lip <- lip[1:963,]
+```
+
+
+### create gmt file
+```{r}
+sink("processing/Metabolon_lip_2l.gmt")
+
+pathway.compounds = unique(lip$SUPER_PATHWAY)
+
+for (i in pathway.compounds){
+  list_met <- lip[lip$SUPER_PATHWAY == i,]
+  list_met <- list_met$BIOCHEMICAL
+  cat(sprintf("%s\t\t%s", tolower(i), paste(list_met, collapse="\t")), "\n")
+}
+
+subpathway.compounds = unique(lip$SUB_PATHWAY)
+
+for(j in subpathway.compounds){
+  sub_list_met <- lip[lip$SUB_PATHWAY == j,]
+  sub_list_met <- sub_list_met$BIOCHEMICAL
+  cat(sprintf("%s\t\t%s", tolower(j), paste(sub_list_met, collapse=" ")), "\n")
+}
+
+sink()
+```
+
+```{r}
+sink("processing/Metabolon_lip.gmt")
+
+
+subpathway.compounds = unique(lip$SUB_PATHWAY)
+
+for(j in subpathway.compounds){
+  sub_list_met <- lip[lip$SUB_PATHWAY == j,]
+  sub_list_met <- sub_list_met$BIOCHEMICAL
+  cat(sprintf("%s\t\t%s", tolower(j), paste(sub_list_met, collapse=" ")), "\n")
+}
+
+sink()
+```
+
+## microbiome
+```{r}
+mi <- read.csv("processing/microbiome_project/tax_table_COCOMO.csv", stringsAsFactors = FALSE)
+mi$Super_group <- NULL
+```
+
+```{r}
+div <- unique(mi$Division)
+class <- unique(mi$Class)
+order <- unique(mi$Order)
+fam <- unique(mi$Family)
+
+list_term <- list(div, class, order, fam)
+```
+
+```{r}
+sink("processing/microbiome_project/Metabolon_mic.gmt")
+
+for (i in 1:4) {
+  tab1 <- list_term[[i]]
+  for (j in 1:length(tab1)) {
+    list_met <- mi[mi[,i+1] ==tab1[j],]
+    list_met <- list_met$X
+    cat(sprintf("%s\t\t%s", tab1[j], paste(list_met, collapse="\t")), "\n")
+  }
+}
+
+sink()
+```
+
+### create gmt file
+```{r}
+sink("processing/microbiome_project/Metabolon_mic.gmt")
+
+pathway.compounds = unique(lip$SUPER_PATHWAY)
+
+for (i in pathway.compounds){
+  list_met <- lip[lip$SUPER_PATHWAY == i,]
+  list_met <- list_met$BIOCHEMICAL
+  cat(sprintf("%s\t\t%s", tolower(i), paste(list_met, collapse="\t")), "\n")
+}
+
+subpathway.compounds = unique(lip$SUB_PATHWAY)
+
+for(j in subpathway.compounds){
+  sub_list_met <- lip[lip$SUB_PATHWAY == j,]
+  sub_list_met <- sub_list_met$BIOCHEMICAL
+  cat(sprintf("%s\t\t%s", tolower(j), paste(sub_list_met, collapse=" ")), "\n")
+}
+
+sink()
+```

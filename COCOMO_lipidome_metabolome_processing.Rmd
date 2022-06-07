@@ -1,0 +1,156 @@
+---
+title: "Processing blood samples"
+output: html_notebook
+---
+
+input metabolon file for lipidomics and metabolomics
+1) Normalization (metabolome/lipidome)
+2) Data cleaning : remove bottom 15%, remove bottom 15% least variant (metabolome/lipidome)
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_COCOMO/")) 
+```
+
+```{r}
+name_ana <- "microbiome_project"
+```
+
+```{r}
+library(xlsx)
+library(NormalyzerDE)
+```
+
+# load data
+## clinical data
+```{r}
+clinical_comp <- read.csv("data/clinical_comp.csv")
+clinical <- read.xlsx("data/data_base_200_patients_COCOMO_filtered.xlsx", 1)
+```
+
+```{r}
+clinical <- merge(clinical, clinical_comp, by = "id")
+rownames(clinical) <- clinical$id
+clinical_interest <- read.csv("data/clinical_data_of_interest_microbiome_project.csv")
+clinical_2 <- clinical_interest$name_table[!clinical_interest$name_table %in% colnames(clinical)]
+clinical <- clinical[,colnames(clinical) %in% clinical_interest$name_table]
+clinical$id <- rownames(clinical)
+write.csv(clinical, paste0("processing/clinical_data_", name_ana, ".csv"))
+```
+
+## metabolome
+```{r}
+data_met <- read.csv("data/cocomo_norm_data_filt.csv")
+data_met <- data_met[data_met$SUPER.PATHWAY !="",]
+data_met <- data_met[,c(1,13:232)]
+names(data_met)[-1] <- gsub("X", "", names(data_met)[-1])
+write.csv(clinical, paste0("processing/metabolomics_no_norm_", name_ana, ".csv"))
+```
+
+## lipidome
+NB : remove total lipids ??
+```{r}
+data_lip <- read.csv("data/clp_lipidomics_data.csv")
+data_lip <- data_lip[data_lip$SUPER_PATHWAY !="",]
+data_lip <- data_lip[,c(1, 9:228)]
+names(data_lip) <- gsub("X", "", names(data_lip))
+write.csv(clinical, paste0("processing/lipidomics_no_norm_", name_ana, ".csv"))
+```
+## merge everything
+```{r}
+met <- data_met$BIOCHEMICAL
+lip <- data_lip$BIOCHEMICAL
+```
+
+```{r}
+data_lip <- data.frame(t(data_lip[,-1]))
+data_met <- data.frame(t(data_met[,-1]))
+
+colnames(data_lip) <- lip
+colnames(data_met) <- met
+
+data_lip$id <- rownames(data_lip)
+data_met$id <- rownames(data_met)
+
+data <- merge(data_lip, data_met, by = "id")
+data <- merge(clinical, data, by = "id")
+
+write.csv(data, paste0("processing/lipidomics_metabolomics_clinical_no_norm_", name_ana, ".csv"))
+```
+
+```{r}
+rownames(data) <- data$id
+clinical <- data[,2:36]
+data <- data[,37:1890]
+
+write.csv(clinical, paste0("processing/clinical_ordered_", name_ana, ".csv"))
+```
+
+# Normalization
+```{r}
+data_2 <- log2(data)
+```
+
+
+```{r}
+data_3 <-as.matrix(data_2)
+hist(data_3 , prob=T)
+curve(dnorm(x,mean(data_3),sd(data_3)),add=T,col="red")
+```
+## quantile normalization
+```{r}
+library(preprocessCore)
+```
+
+```{r}
+data_4 <- normalize.quantiles(as.matrix(data))
+```
+
+```{r}
+library("car")
+qqPlot(data_4)
+```
+
+```{r}
+data_3 <-as.matrix(data_4)
+hist(data_3 , prob=T)
+curve(dnorm(x,mean(data_3),sd(data_3)),add=T,col="red")
+```
+# filtering
+## remove 15 % bottom values
+```{r}
+#n <- data.frame(t(data_2))
+#n2 <- data.frame(rowSums(n))
+#n3 <- quantile(n2$rowSums.n.,0.15)
+#n2 <- rownames(n2)[n2$rowSums.n. > n3]
+```
+```{r}
+#n <- n[rownames(n) %in% n2,]
+#met <- rownames(n)
+```
+
+## remove low variance values
+```{r}
+n <- data_2
+met <- rownames(n)
+
+n4 <- n[, sapply(n, var) > 0]
+#colnames(n) <- met
+```
+
+```{r}
+rownames(n4) <- gsub("X", "",rownames(n4))
+write.csv(n4, paste0("processing/lipidomics_metabolomics_log2_norm_filt", name_ana, ".csv"))
+```
+
+```{r}
+length(which(colnames(n4) %in% colnames(data_lip)))
+length(which(colnames(n4) %in% colnames(data_met)))
+```
+
+

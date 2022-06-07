@@ -1,0 +1,517 @@
+---
+title: "Statistic tests microbiome"
+output: html_notebook
+---
+
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+## family level
+## alpha diversity
+## beta diversity
+
+```{r}
+library(vegan)
+library(ggplot2)
+library(dplyr)
+```
+
+
+## load clusters
+```{r}
+cluster <- read.csv("processing/cluster_SNF_3_omics_3_clusters_plusHC.csv")
+cluster$X <- NULL
+names(cluster)[2] <- "X"
+cluster <- cluster[!is.na(cluster$cluster),]
+```
+
+
+```{r}
+alpha <- read.csv("processing/table_alpha_diversity_filtered_model_clusters.csv")
+alpha$X.1 <- NULL
+alpha$X <- NULL
+```
+
+
+```{r}
+data <- alpha
+data <- data[data$cluster != "Ctrl",]
+```
+
+```{r}
+results <- data.frame(Measure = NA, pvalue_G1_G2 = NA, pvalue_G2_G3 = NA, pvalue_G1_G3 = NA, pvalue_KW = NA)
+```
+
+```{r}
+for (i in 1:9){
+  print(names(data)[i])
+  c1 <- data[data$cluster == 1,i]
+  c2 <- data[data$cluster == 2,i]
+  c3 <- data[data$cluster == 3,i]
+  ctrl <- data[data$cluster == "Ctrl",i]
+  results[i, 1] <- names(data)[i]
+  results[i, 2] <- wilcox.test(c1, c2)$p.value
+  results[i, 3] <- wilcox.test(c2, c3)$p.value
+  results[i, 4] <- wilcox.test(c1, c3)$p.value
+  results[i, 5] <- kruskal.test(data[,i] ~ cluster, data = data)$p.value
+}
+
+results$FDR_G1G2 <- p.adjust(results$pvalue_G1_G2, method = "fdr")
+results$FDR_G1G3 <- p.adjust(results$pvalue_G1_G3, method = "fdr")
+results$FDR_G2G3 <- p.adjust(results$pvalue_G2_G3, method = "fdr")
+
+results$FDR_KW <- p.adjust(results$pvalue_KW, method = "fdr")
+
+results_filt <- results[results$FDR_KW < 0.1,]
+
+write.csv(results, "processing/alpha_diversity_clusters_pvalues.csv")
+```
+
+
+
+## load data
+```{r}
+phylum <- read.csv("processing/data_phylum_clean.csv")
+phylum_data <- merge(cluster, phylum, by = "X")
+phylum_data$X.1 <- NULL
+phylum_data_2 <- phylum_data
+phylum_data$X <- NULL
+```
+
+```{r}
+dist <- vegdist(phylum_data[,-1])
+anova(betadisper(dist, phylum_data$cluster))
+```
+```{r}
+permutest(betadisper(dist, phylum_data$cluster), pairwise = TRUE)
+```
+
+```{r}
+permanova <- adonis(phylum_data[,-1] ~ phylum_data$cluster, method = "euclidean", permutations = 999)
+```
+
+```{r}
+pairwise.adonis <- function(x,factors, sim.method, p.adjust.m){
+  coeff <- list()
+  co = as.matrix(combn(unique(factors),2))
+  pairs = c()
+  F.Model =c()
+  R2 = c()
+  p.value = c()
+  for(elem in 1:ncol(co)){
+    data <- x[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem])),]
+    group <- factors[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem]))] 
+    ## test homogeneity
+    dist <- vegdist(data)
+    print(anova(betadisper(dist, group)))
+
+    ad = adonis(x[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem])),] ~ factors[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem]))] ,
+                permutations = 9999, method =sim.method);
+    pairs = c(pairs,paste(co[1,elem],'vs',co[2,elem]));
+    F.Model =c(F.Model,ad$aov.tab[1,4]);
+    R2 = c(R2,ad$aov.tab[1,5]);
+    p.value = c(p.value,ad$aov.tab[1,6])
+    coeff[[elem]] = coefficients(ad)["factors[factors %in% c(as.character(co[1, elem]), as.character(co[2, elem]))]1",]
+ }
+write.csv(coeff[[2]], "processing/coefficient_permanova_group_2_vs_group_1.csv")
+write.csv(coeff[[4]], "processing/coefficient_permanova_group_3_vs_group_1.csv")
+p.adjusted = p.adjust(p.value,method=p.adjust.m)
+pairw.res = data.frame(pairs,F.Model,R2,p.value,p.adjusted)
+return(pairw.res)
+}
+
+PW.Adonis=pairwise.adonis(phylum_data[,-1],phylum_data$cluster,sim.method="bray",p.adjust.m = "bonferroni")
+
+write.table(PW.Adonis,"results/Adonis-Results_phylum.csv",sep=",")
+```
+```{r}
+col <- c("#E69F00", "#56B4E9")
+```
+
+```{r}
+coef <- read.csv("processing/coefficient_permanova_group_2_vs_group_1.csv")
+
+pdf("results/figures/barplot_coefficients_permanova_group1_vs_group2_phylum_NON_SIGN.pdf", height = 3, width = 6)
+top.coef <- coef[rev(order(abs(coef$x))),]
+top.coef$sign <- ifelse(top.coef$x < 0, "neg", "pos")
+top.coef <- top.coef[order(top.coef$x),]
+top.coef$X <- factor(top.coef$X, levels = top.coef$X)
+par(mar = c(3, 14, 2, 1))
+ggplot(data=top.coef, aes(x=x, y=X, fill = sign)) +
+geom_bar(stat="identity")+
+theme_classic()+ scale_fill_manual(values=col)+ylab("Phylums")+xlab("Coefficients")
+dev.off()
+```
+```{r}
+coef <- read.csv("processing/coefficient_permanova_group_3_vs_group_1.csv")
+
+pdf("results/figures/barplot_coefficients_permanova_group1_vs_group3_phylum_NON_SIGN.pdf", height = 3, width = 6)
+top.coef <- coef[rev(order(abs(coef$x))),]
+top.coef$sign <- ifelse(top.coef$x < 0, "neg", "pos")
+top.coef <- top.coef[order(top.coef$x),]
+top.coef$X <- factor(top.coef$X, levels = top.coef$X)
+par(mar = c(3, 14, 2, 1))
+ggplot(data=top.coef, aes(x=x, y=X, fill = sign)) +
+geom_bar(stat="identity")+
+theme_classic()+ scale_fill_manual(values=col)+ylab("Phylums")+xlab("Coefficients")
+dev.off()
+```
+
+## load data
+```{r}
+family <- read.csv("processing/data_family_clean.csv")
+family_data <- merge(cluster, family, by = "X")
+family_data$X.1 <- NULL
+family_data_2 <- family_data
+family_data$X <- NULL
+```
+
+```{r}
+dist <- vegdist(family_data[,-1])
+anova(betadisper(dist, family_data$cluster))
+```
+```{r}
+permutest(betadisper(dist, family_data$cluster), pairwise = TRUE)
+```
+
+```{r}
+permanova <- adonis(family_data[,-1] ~ family_data$cluster, method = "euclidean", permutations = 999)
+```
+```{r}
+coefficients(permanova)[2,]
+```
+
+```{r}
+pairwise.adonis <- function(x,factors, sim.method, p.adjust.m){
+  coeff <- list()
+  co = as.matrix(combn(unique(factors),2))
+  pairs = c()
+  F.Model =c()
+  R2 = c()
+  p.value = c()
+  for(elem in 1:ncol(co)){
+    print(factors[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem]))])
+    data <- x[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem])),]
+    group <- factors[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem]))] 
+    ## test homogeneity
+    dist <- vegdist(data)
+    print(anova(betadisper(dist, group)))
+
+    ad = adonis(x[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem])),] ~ factors[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem]))] ,
+                permutations = 9999, method =sim.method);
+    pairs = c(pairs,paste(co[1,elem],'vs',co[2,elem]));
+    F.Model =c(F.Model,ad$aov.tab[1,4]);
+    R2 = c(R2,ad$aov.tab[1,5]);
+    p.value = c(p.value,ad$aov.tab[1,6])
+    print(coefficients(ad)[2,])
+    coeff[[elem]] = coefficients(ad)[2,]
+ }
+write.csv(coeff[[2]], "processing/coefficient_permanova_group_2_vs_group_1.csv")
+write.csv(coeff[[4]], "processing/coefficient_permanova_group_3_vs_group_1.csv")
+p.adjusted = p.adjust(p.value,method=p.adjust.m)
+pairw.res = data.frame(pairs,F.Model,R2,p.value,p.adjusted)
+return(pairw.res)
+}
+
+PW.Adonis=pairwise.adonis(family_data[,-1],family_data$cluster,sim.method="bray",p.adjust.m = "bonferroni")
+
+write.table(PW.Adonis,"results/Adonis-Results_family.csv",sep=",")
+```
+```{r}
+col <- c("#E69F00", "#56B4E9")
+```
+
+```{r}
+coef <- read.csv("processing/coefficient_permanova_group_2_vs_group_1.csv")
+
+pdf("results/figures/barplot_coefficients_permanova_group1_vs_group2_family.pdf", height = 3, width = 6)
+top.coef <- coef[rev(order(abs(coef$x)))[1:20],]
+top.coef$sign <- ifelse(top.coef$x < 0, "neg", "pos")
+top.coef <- top.coef[order(top.coef$x),]
+top.coef$X <- factor(top.coef$X, levels = top.coef$X)
+par(mar = c(3, 14, 2, 1))
+ggplot(data=top.coef, aes(x=x, y=X, fill = sign)) +
+geom_bar(stat="identity")+
+theme_classic()+ scale_fill_manual(values=col)+ylab("Families")+xlab("Coefficients")
+dev.off()
+```
+
+```{r}
+coef <- read.csv("processing/coefficient_permanova_group_3_vs_group_1.csv")
+
+pdf("results/figures/barplot_coefficients_permanova_group1_vs_group3_family.pdf", height = 3, width = 6)
+top.coef <- coef[rev(order(abs(coef$x)))[1:20],]
+top.coef$sign <- ifelse(top.coef$x < 0, "neg", "pos")
+top.coef <- top.coef[order(top.coef$x),]
+top.coef$X <- factor(top.coef$X, levels = top.coef$X)
+par(mar = c(3, 14, 2, 1))
+ggplot(data=top.coef, aes(x=x, y=X, fill = sign)) +
+geom_bar(stat="identity")+
+theme_classic()+ scale_fill_manual(values=col)+ylab("Families")+xlab("Coefficients")
+dev.off()
+```
+```{r}
+family_data_2 <- family_data_2[,names(family_data_2) %in% c("X", "Prevotellaceae", "Veillonellaceae", "Succinivibrionaceae", "Bacteroidaceae", "Lachnospiraceae")]
+```
+
+```{r}
+clinical <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/clinical_data_microbiome_project.csv")
+clinical$Combined_therapy <- gsub("\\/.*", "", clinical$Combined_therapy)
+clinical$Combined_therapy <- ifelse(clinical$Combined_therapy %in% c("ABC", "AZT", "TAF", "TDF"), clinical$Combined_therapy, "Others")
+clinical_data <- merge(cluster, clinical, by = "X")
+
+clinical_data <- select(clinical_data, X, cluster, hypertension, Transm_mode, METS, Combined_therapy, X3rd_Drug, GENDER)
+names(clinical_data)[1] <- "sample"
+clinical_data$group <- "group1"
+clinical_data$cluster <- paste0("C", clinical_data$cluster)
+names(clinical_data)[1] <- "X"
+
+family_data_3 <- merge(family_data_2, clinical_data, by = "X")
+```
+
+total_regression_table <- as.data.frame(matrix(0,nrow=0,ncol=7))
+colnames(total_regression_table) <- c("Clinical_parameter","Bacteria","Estimate","StdError","tStat","pvalue", "padjust")
+
+for (i in 2:6) {
+  for(j in 7:19){
+    plm <- as.data.frame(matrix(0,nrow=1,ncol=6))
+    colnames(plm) <- c("Clinical_parameter","Factor","Estimate","StdError","tStat","pvalue")
+    plm[1, 1] <- names(family_data_3)[j]
+    plm[1, 2] <- names(family_data_3)[i]
+    plm[1,3:6] <- coef(summary(lm(family_data_3[,j] ~ family_data_3[,i], data = family_data_3)))[2,]
+    plm$padjust <- p.adjust(plm$pvalue,method="BH")
+    total_regression_table <- rbind(total_regression_table, plm)
+  }
+}
+
+sigplm <- total_regression_table[total_regression_table$padjust<0.1,] #look only at those with adjusted p.value < 0.05
+
+
+write.csv(sigplm, "processing/association_clinical_top_bacteria.csv")
++ scale_color_manual(values=col)+ scale_fill_manual(values=col)
+```{r}
+col
+```
+
+```{r}
+col <- c("#6b8150", "#2273C3","#EFC144","#868686")
+
+prot.data = family_data_3[,2:6]
+prot.labels = family_data_3$cluster
+print(prot.labels)
+  
+pca <- prcomp(prot.data, scale. = TRUE)
+df_out <- as.data.frame(pca$x)
+df_out$group <- as.factor(prot.labels)
+  
+x <- project.pca.proportionvariances <- ((pca$sdev^2) / (sum(pca$sdev^2)))*100
+a1 <- x[1]
+a2 <- x[2]
+  
+  ggplot(df_out)+
+    geom_point(aes(x=PC1,y=PC2,color=group, fill = group), size=3)+
+    theme(legend.title=element_text(size=15),legend.text=element_text(size=12),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=15),axis.title.x=element_text(size=15),
+        axis.text.y=element_text(size=18),axis.text.x=element_text(size=18))+
+    xlab(paste0("PC1: ",round(a1,0),"% variance"))+
+    ylab(paste0("PC2: ",round(a2,0),"% variance"))+ 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)))+scale_color_manual(values = col[-1])
+  
+ggsave(paste0("results/figures/top_microbiome_correlation_pca_cluster_color_clean.pdf"), width = 6, height = 4)
+```
+```{r}
+family_data_3$Transm_mode[family_data_3$Transm_mode %in% c(7, 8, NA)] <- "Others"
+family_data_3$Transm_mode[family_data_3$Transm_mode %in% c(1)] <- "Homo/bisexual"
+family_data_3$Transm_mode[family_data_3$Transm_mode %in% c(6)] <- "Heterosexual"
+```
+
+```{r}
+for (i in 7:14){
+  prot.data = family_data_3[,2:6]
+  prot.labels = family_data_3[,i]
+  print(prot.labels)
+  
+  pca <- prcomp(prot.data, scale. = TRUE)
+  df_out <- as.data.frame(pca$x)
+  df_out$group <- as.factor(prot.labels)
+  
+  x <- project.pca.proportionvariances <- ((pca$sdev^2) / (sum(pca$sdev^2)))*100
+  a1 <- x[1]
+  a2 <- x[2]
+  
+  ggplot(df_out)+
+    geom_point(aes(x=PC1,y=PC2,color=group, fill = group), size=3)+
+    theme(legend.title=element_text(size=15),legend.text=element_text(size=12),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=15),axis.title.x=element_text(size=15),
+        axis.text.y=element_text(size=18),axis.text.x=element_text(size=18))+
+    xlab(paste0("PC1: ",round(a1,0),"% variance"))+
+    ylab(paste0("PC2: ",round(a2,0),"% variance"))+ 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)))
+
+  ggsave(paste0("results/figures/top_microbiome_correlation_pca_", names(family_data_3)[i],".pdf"), width = 6, height = 4)
+}
+```
+
+for (i in 7:19){
+  prot.data = family_data_3[,2:6]
+  prot.labels = family_data_3[,i]
+  print(prot.labels)
+ 
+  prot.umap = umap(prot.data)
+  prot.umap
+ 
+  data <- prot.umap$data
+  layout <- prot.umap$layout
+  data_umap <- cbind(data, layout)
+  x = ncol(data_umap)
+  y = ncol(data_umap)-1
+  print(x)
+  print(y)
+  colnames(data_umap)[y:x] <- c("UMAP1", "UMAP2")
+  data_umap <-data.frame(data_umap)
+ 
+  data_umap %>%
+  mutate(Condition = prot.labels) %>%
+  ggplot(aes(UMAP1, UMAP2), color = Condition, fill = Condition)+ geom_point(size = 5, alpha = 1, shape = 21, aes(color = factor(Condition), fill = factor(Condition)))+
+  	theme(legend.title=element_text(size=10),legend.text=element_text(size=10),
+        	legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        	axis.title.y=element_text(size=16, color = "black", face="bold"),axis.title.x=element_text(size=16, color = "black", face="bold"),
+        	axis.text.y=element_text(size=14, color = "black"),axis.text.x=element_text(size=14, color = "black"))
+ 
+  ggsave(paste0("results/figures/top_microbiome_umap_", names(family_data_3)[i],"_.pdf"), width = 6, height = 4)
+}
+
+
+for (i in 7:19){
+  prot.data = family_data_3[,2:6]
+  prot.labels = family_data_3[,i]
+  print(prot.labels)
+ 
+  prot.umap = umap(prot.data)
+  prot.umap
+ 
+  data <- prot.umap$data
+  layout <- prot.umap$layout
+  data_umap <- cbind(data, layout)
+  x = ncol(data_umap)
+  y = ncol(data_umap)-1
+  print(x)
+  print(y)
+  colnames(data_umap)[y:x] <- c("UMAP1", "UMAP2")
+  data_umap <-data.frame(data_umap)
+ 
+  data_umap %>%
+  mutate(Condition = prot.labels) %>%
+  ggplot(aes(UMAP1, UMAP2), color = Condition, fill = Condition)+ geom_point(size = 5, alpha = 1, shape = 21, aes(color = factor(Condition), fill = factor(Condition)))+
+  	theme(legend.title=element_text(size=10),legend.text=element_text(size=10),
+        	legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        	axis.title.y=element_text(size=16, color = "black", face="bold"),axis.title.x=element_text(size=16, color = "black", face="bold"),
+        	axis.text.y=element_text(size=14, color = "black"),axis.text.x=element_text(size=14, color = "black"))
+ 
+  ggsave(paste0("results/figures/top_microbiome_umap_", names(family_data_3)[i],"_.pdf"), width = 6, height = 4)
+}
+
+
+
+```{r}
+genus <- read.csv("processing/data_genus_clean.csv")
+genus_data <- merge(cluster, genus, by = "X")
+genus_data$X <- NULL
+genus_data$X.1 <- NULL
+```
+
+```{r}
+pairwise.adonis <- function(x,factors, sim.method, p.adjust.m){
+  coeff <- list()
+  co = as.matrix(combn(unique(factors),2))
+  pairs = c()
+  F.Model =c()
+  R2 = c()
+  p.value = c()
+  for(elem in 1:ncol(co)){
+    data <- x[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem])),]
+    group <- factors[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem]))] 
+    ## test homogeneity
+    dist <- vegdist(data)
+    print(anova(betadisper(dist, group)))
+
+    ad = adonis(x[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem])),] ~ factors[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem]))] ,
+                permutations = 9999, method =sim.method);
+    pairs = c(pairs,paste(co[1,elem],'vs',co[2,elem]));
+    F.Model =c(F.Model,ad$aov.tab[1,4]);
+    R2 = c(R2,ad$aov.tab[1,5]);
+    p.value = c(p.value,ad$aov.tab[1,6])
+    coeff[[elem]] = coefficients(ad)["factors[factors %in% c(as.character(co[1, elem]), as.character(co[2, elem]))]1",]
+ }
+write.csv(coeff[[2]], "processing/coefficient_permanova_group_2_vs_group_1_genus.csv")
+write.csv(coeff[[4]], "processing/coefficient_permanova_group_3_vs_group_1_genus.csv")
+p.adjusted = p.adjust(p.value,method=p.adjust.m)
+pairw.res = data.frame(pairs,F.Model,R2,p.value,p.adjusted)
+return(pairw.res)
+}
+
+PW.Adonis=pairwise.adonis(genus_data[,-1],genus_data$cluster,sim.method="bray",p.adjust.m = "bonferroni")
+
+write.table(PW.Adonis,"results/Adonis-Results_genus.csv",sep=",")
+```
+
+```{r}
+coef <- read.csv("processing/coefficient_permanova_group_2_vs_group_1_genus.csv")
+
+pdf("results/figures/barplot_coefficients_permanova_group1_vs_group2_genus.pdf", height = 3, width = 6)
+top.coef <- coef[rev(order(abs(coef$x)))[1:20],]
+top.coef$sign <- ifelse(top.coef$x < 0, "neg", "pos")
+top.coef <- top.coef[order(top.coef$x),]
+top.coef$X <- factor(top.coef$X, levels = top.coef$X)
+par(mar = c(3, 14, 2, 1))
+ggplot(data=top.coef, aes(x=x, y=X, fill = sign)) +
+geom_bar(stat="identity")+
+theme_classic()+ scale_fill_manual(values=col)+ylab("Genus")+xlab("Coefficients")
+dev.off()
+```
+
+```{r}
+coef <- read.csv("processing/coefficient_permanova_group_3_vs_group_1_genus.csv")
+
+pdf("results/figures/barplot_coefficients_permanova_group1_vs_group3_genus.pdf", height = 3, width = 6)
+top.coef <- coef[rev(order(abs(coef$x)))[1:20],]
+top.coef$sign <- ifelse(top.coef$x < 0, "neg", "pos")
+top.coef <- top.coef[order(top.coef$x),]
+top.coef$X <- factor(top.coef$X, levels = top.coef$X)
+par(mar = c(3, 14, 2, 1))
+ggplot(data=top.coef, aes(x=x, y=X, fill = sign)) +
+geom_bar(stat="identity")+
+theme_classic()+ scale_fill_manual(values=col)+ylab("Genus")+xlab("Coefficients")
+dev.off()
+```

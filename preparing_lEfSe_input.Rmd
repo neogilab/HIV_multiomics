@@ -1,0 +1,103 @@
+---
+title: "Prepare Left input"
+output: html_notebook
+---
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+
+
+```{r}
+library(dplyr)
+```
+
+
+```{r}
+cluster <- read.csv("processing/cluster_SNF_3_omics_3_clusters_plusHC.csv")
+cluster$X <- NULL
+names(cluster)[2] <- "X"
+
+relative_abundance <- read.csv("processing/relative_abundance_table.csv")
+taxa <- read.csv("processing/tax_table_COCOMO.csv")
+```
+
+```{r}
+taxa[taxa == "uncultured"] <- NA
+taxa[taxa == "gut.metagenome"] <- NA
+taxa[taxa == "metagenome"] <- NA
+```
+
+```{r}
+taxa$label <- paste0(taxa$Super_group, "|",
+                     taxa$Division, "|",
+                     taxa$Class, "|",
+                     taxa$Order, "|",
+                     taxa$Family,"|",
+                     taxa$Genus)
+```
+
+```{r}
+taxa$label <- gsub("\\|NA", "", taxa$label)
+taxa <- select(taxa, X, label)
+```
+
+```{r}
+relative_abundance_2 <- merge(taxa, relative_abundance, by = "X") 
+relative_abundance_2$X <- NULL
+```
+
+```{r}
+names(relative_abundance_2) <- gsub("X", "", names(relative_abundance_2))
+```
+
+```{r}
+cluster <- cluster[match(names(relative_abundance_2)[-1], cluster$X),]
+```
+
+```{r}
+x <- paste0("C",cluster$cluster)
+```
+
+```{r}
+length(x)
+```
+
+```{r}
+ncol(relative_abundance_2)
+```
+
+```{r}
+relative_abundance_2 <- rbind(c("label",x), relative_abundance_2)
+
+#relative_abundance_2$label[1] <- "cluster"
+```
+
+```{r}
+write.table(relative_abundance_2, file = "processing/input_lEfSE_3_cluster_HC.txt", sep = "\t", row.names=FALSE, col.names=TRUE, quote=FALSE)
+```
+
+```{r}
+r1 <- relative_abundance_2[,which(relative_abundance_2[1,] %in% c("C1", "C2", "label"))]
+r2 <- relative_abundance_2[,which(relative_abundance_2[1,] %in% c("C1", "C3", "label"))]
+r3 <- relative_abundance_2[,which(relative_abundance_2[1,] %in% c("C3", "C2", "label"))]
+```
+
+```{r}
+
+
+write.table(r1, file = "/home/flomik/Desktop/Code-PHD/3_layers_COCOMO/processing/input_lEfSE_C1C2.txt", sep = "\t", row.names=FALSE, col.names=TRUE, quote=FALSE)
+
+write.table(r2, file = "/home/flomik/Desktop/Code-PHD/3_layers_COCOMO/processing/input_lEfSE_C1C3.txt", sep = "\t", row.names=FALSE, col.names=TRUE, quote=FALSE)
+
+write.table(r3, file = "/home/flomik/Desktop/Code-PHD/3_layers_COCOMO/processing/input_lEfSE_C3C2.txt", sep = "\t", row.names=FALSE, col.names=TRUE, quote=FALSE)
+
+
+```
+

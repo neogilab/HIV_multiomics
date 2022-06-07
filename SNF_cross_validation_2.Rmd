@@ -1,0 +1,577 @@
+---
+title: "5-fold cross validation SNF"
+output: html_notebook
+---
+
+
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+
+```{r}
+name_ana <- "microbiome_project"
+```
+
+```{r}
+library(xlsx)
+library(dplyr)
+library(SNFtool)
+library(ROCR)
+library(cvAUC)
+library(circlize)
+```
+
+```{r}
+clinical_data <- read.csv("processing/table_clinical_data.csv")
+```
+
+## Load data
+```{r}
+data_lip <- read.csv("data/clp_lipidomics_data.csv")
+data_met <- read.csv("data/cocomo_norm_data_filt.csv")
+data_met <- data_met[data_met$SUPER.PATHWAY !="",]
+```
+
+## lipidome
+```{r}
+data_lip <- data_lip[data_lip$SUPER_PATHWAY !="",]
+data_lip <- data_lip[,c(1, 9:228)]
+names(data_lip) <- gsub("X", "", names(data_lip))
+lip <- data_lip$BIOCHEMICAL
+data_lip <- data.frame(t(data_lip[,-1]))
+colnames(data_lip) <- lip
+grep("Total", colnames(data_lip))
+data_lip <- data_lip[rownames(data_lip) %in% clinical_data$X, ]
+data_lip <- data_lip[,1:963]
+grep("Total", colnames(data_lip))
+data_lip <- log2(data_lip)
+data_lip <- data_lip[, sapply(data_lip, var) > 0.3]
+```
+
+## metabolome
+```{r}
+data_met <- data_met[,c(1,13:232)]
+names(data_met)[-1] <- gsub("X", "", names(data_met)[-1])
+met <- data_met$BIOCHEMICAL
+data_met <- data.frame(t(data_met[,-1]))
+colnames(data_met) <- met
+data_met <- data_met[rownames(data_met) %in% clinical_data$X, ]
+data_met <- log2(data_met)
+data_met <- data_met[, sapply(data_met, var) > 0.3]
+data_met <- data_met[order(match(rownames(data_met), rownames(data_lip))), ]
+```
+
+## microbiome
+```{r}
+data_mi <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/relative_abundance_table.csv")
+rownames(data_mi) <- data_mi$X
+data_mi$X <- NULL
+data_mi <- data.frame(t(data_mi))
+rownames(data_mi) <- gsub("X","",rownames(data_mi))
+data_mi <- data_mi[rownames(data_mi) %in% clinical_data$X, ]
+data_mi <- data_mi[order(match(rownames(data_mi), rownames(data_lip))), ]
+```
+
+## Normalization
+```{r}
+Data1 = Standard_Normalization(data_lip)
+Data2 = Standard_Normalization(data_met)
+Data3 = Standard_Normalization(data_mi)
+```
+
+## Distance matrices
+```{r}
+Dist1 = dist2(as.matrix(Data1),as.matrix(Data1));
+Dist2 = dist2(as.matrix(Data2),as.matrix(Data2));
+Dist3 = dist2(as.matrix(Data3),as.matrix(Data3));
+```
+
+```{r}
+.discretisation <- function(eigenVectors) {
+  
+  normalize <- function(x) x / sqrt(sum(x^2))
+  eigenVectors = t(apply(eigenVectors,1,normalize))
+  
+  n = nrow(eigenVectors)
+  k = ncol(eigenVectors)
+  
+  R = matrix(0,k,k)
+  R[,1] = t(eigenVectors[round(n/2),])
+  
+  mini <- function(x) {
+    i = which(x == min(x))
+    return(i[1])
+  }
+  
+  c = matrix(0,n,1)
+  for (j in 2:k) {
+    c = c + abs(eigenVectors %*% matrix(R[,j-1],k,1))
+    i = mini(c)
+    R[,j] = t(eigenVectors[i,])
+  }
+  
+  lastObjectiveValue = 0
+  for (i in 1:20) {
+    eigenDiscrete = .discretisationEigenVectorData(eigenVectors %*% R)
+    
+    svde = svd(t(eigenDiscrete) %*% eigenVectors)
+    U = svde[['u']]
+    V = svde[['v']]
+    S = svde[['d']]
+    
+    NcutValue = 2 * (n-sum(S))
+    if(abs(NcutValue - lastObjectiveValue) < .Machine$double.eps) 
+      break
+    
+    lastObjectiveValue = NcutValue
+    R = V %*% t(U)
+    
+  }
+  
+  return(list(discrete=eigenDiscrete,continuous =eigenVectors))
+}  
+```
+
+```{r}
+.discretisationEigenVectorData <- function(eigenVector) {
+  
+  Y = matrix(0,nrow(eigenVector),ncol(eigenVector))
+  maxi <- function(x) {
+    i = which(x == max(x))
+    return(i[1])
+  }
+  j = apply(eigenVector,1,maxi)
+  Y[cbind(1:nrow(eigenVector),j)] = 1
+  
+  return(Y)
+  
+}
+```
+
+```{r}
+my_estimateNumberOfClustersGivenGraph <- function(W, NUMC=2:5) {
+    # Estimates the best number of clusters from a vector of choices, using 
+    #   the eigen-gap & rotation cost heuristics.
+    #
+    # Args:
+    #   W: Affinity matrix (usually result from SNF)
+    #   NUMC: A vector of integers specifying which cluster numbers to check
+    #
+    # Returns:
+    #   A vector of the top two suggested number of clusters using
+    #       the eigen-gap and rotation cost heuristics. 
+    #
+
+    #Put this check after the length(NUMC) check?
+    if (min(NUMC) == 1) {
+        warning('Note that we always assume there are more than one cluster.')
+        NUMC <- NUMC[NUMC > 1]
+    }
+
+    #Why is this performed here?
+    W <- (W + t(W))/2
+    diag(W) <- 0
+
+    #NUMC validity check
+    if (length(NUMC) <= 0) {
+        warning(paste("Invalid NUMC provided, must be an integer vector",
+             "with atleast one other number than 1.",
+              "Using default NUMC=c(2,3,4,5)",sep=""))
+        NUMC <- 2:5 
+    }
+
+    # compute unnormalized Laplacian
+    degs <- rowSums(W)
+    degs[degs == 0] <- .Machine$double.eps    
+    D <- diag(degs)    
+    L <- D - W
+    Di <- diag(1 / sqrt(degs))
+    L <- Di %*% L %*% Di
+    #print(dim(L))
+
+    # compute the eigenvectors corresponding to the k smallest
+    eigs <- eigen(L)
+    eigs_order <- sort(eigs$values, index.return=T)$ix
+    eigs$values <- eigs$values[eigs_order]
+    eigs$vectors <- eigs$vectors[, eigs_order]
+    eigengap <- abs(diff(eigs$values))
+#    eigengap <- eigengap * (1 - eigs$values[1:length(eigs$values) - 1]
+#        ) / (1 - eigs$values[2:length(eigs$values)])
+
+    quality <- list()
+    for (c_index in 1:length(NUMC)) {
+        ck <- NUMC[c_index]
+        UU <- eigs$vectors[, 1:ck]
+        EigenvectorsDiscrete <- .discretisation(UU)[[1]]
+        EigenVectors <- EigenvectorsDiscrete^2
+      
+        #MATLAB: sort(EigenVectors,2, 'descend');
+        temp1 <- EigenVectors[do.call(order, lapply(1:ncol(EigenVectors),
+             function(i) EigenVectors[, i])), ]
+        temp1 <- t(apply(temp1, 1, sort, TRUE))  
+  
+        quality[[c_index]] <- (1 - eigs$values[ck + 1]) / 
+            (1 - eigs$values[ck]) * 
+            sum( sum( diag(1 / (temp1[, 1] + .Machine$double.eps) ) %*%
+            temp1[, 1:max(2, ck-1)] ))
+    }
+    #Eigen-gap best two clusters
+    m1 <- eigengap[NUMC]
+    t1 <- sort(eigengap[NUMC], decreasing=TRUE, index.return=T)$ix
+    K1 <- NUMC[t1[1]]
+    K12 <- NUMC[t1[2]]
+
+    #Rotation cost best two clusters
+    m2 <- quality
+    t2 <- sort(unlist(quality), index.return=TRUE)$ix
+    K2 <- NUMC[t2[1]]
+    K22 <- NUMC[t2[2]]    
+  
+    output <- list("Eigen-gap best"=K1, "Eigen-gap 2nd best"=K12,
+        "Rotation cost best"=K2, "Rotation cost 2nd best"=K22)
+    output_2 <- list(m1, m2, K1, K12, K2, K22)
+    return (output_2)
+}
+```
+
+# SNF
+```{r}
+K = 13;##number of neighbors, usually (10~30)
+alpha = 0.8; ##hyperparameter, usually (0.3~0.8)
+T = 10; ###Number of Iterations, usually (10~20)
+```
+
+
+## Distance networks
+```{r}
+W1 = affinityMatrix(Dist1, K, alpha)
+W2 = affinityMatrix(Dist2, K, alpha)
+W3 = affinityMatrix(Dist3, K, alpha)
+```
+
+
+## SNF
+```{r}
+W = SNF(list(W1,W2, W3), K, T)
+C = 3###number of clusters
+group = SpectralClustering(W,C);###the final subtypes information
+```
+
+```{r}
+min(W2)
+```
+
+```{r}
+pca= prcomp(W) 
+df_out <- as.data.frame(pca$x)
+df_out$group <- group
+```
+
+```{r}
+x <- project.pca.proportionvariances <- ((pca$sdev^2) / (sum(pca$sdev^2)))*100
+a1 <- x[1]
+a2 <- x[2]
+barplot(project.pca.proportionvariances, cex.names=1, xlab=paste("Principal component (PC), 1-", length(pca$sdev)), ylab="Proportion of variation (%)", main="Scree plot", ylim=c(0,100))
+PCAloadings <- data.frame(Variables = rownames(pca$rotation), pca$rotation)
+PCAloadings_2 <- PCAloadings
+x <- abs(PCAloadings_2$PC1) < 0.15 & abs(PCAloadings_2$PC2) < 0.15
+PCAloadings_2$PC1[x] <- NA
+PCAloadings_2$PC2[x] <- NA
+PCAloadings_2$Variables[x] <- NA
+```
+```{r}
+col <- c("#2273C3","#EFC144","#868686")
+```
+
+```{r}
+library(ggplot2)
+
+gg <- data.frame(cluster=factor(df_out$group), x=df_out$PC1, y=df_out$PC2)
+centroids <- aggregate(cbind(x,y)~cluster,data=gg,mean)
+gg <- merge(gg,centroids,by="cluster",suffixes=c("",".centroid"))
+
+ggplot(gg)+
+  geom_point(aes(x=x,y=y,color=cluster, fill = cluster), size=3)+
+  stat_ellipse(geom = "polygon", aes(x=x,y=y,color=cluster, fill = cluster), alpha = 0.3) +
+  geom_point(data=centroids, aes(x=x, y=y, color=cluster, fill = cluster), size = 5, alpha = 0.9, shape = 19)+ 
+  geom_segment(aes(x=x.centroid, y=y.centroid, xend=x, yend=y, color=cluster))+
+  theme(legend.title=element_text(size=15),legend.text=element_text(size=12),
+        legend.key.size=unit(0.7,"line"),plot.title = element_text(hjust = 0.5),
+        axis.title.y=element_text(size=15),axis.title.x=element_text(size=15),
+        axis.text.y=element_text(size=18),axis.text.x=element_text(size=18))+
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)))+ scale_color_manual(values=col)+ scale_fill_manual(values=col)
+
+path_fig <- paste0("results/figures_2/PCA_SNF_fusion_extra_analysis.pdf")
+dev.copy(pdf, path_fig, height = 4, width = 6)
+dev.off()
+```
+
+## extract cluters
+```{r}
+table_cluters <- data.frame(cluster = group, names = rownames(data_lip))
+#write.csv(table_cluters, "processing/cluster_SNF_3_omics_3_clusters_2.csv")
+```
+
+```{r}
+x <- read.csv("processing/cluster_SNF_3_omics_3_clusters.csv")
+```
+
+```{r}
+table_clu <- merge(x, table_cluters, by = "names")
+```
+
+```{r}
+displayClusters2 <- function(W, group, ColSideColors) {
+    # Visualize the clusters present in given similarity matrix with sample 
+    #   information displayed by given colors.
+    #
+    # Args:
+    #   W: Affinity matrix
+    #   group: labels of cluster groups 
+    #   ColSideColors: Character vector of length(group) containing color names 
+    #       for horizontal side bar to annotate columns of W, OR a character 
+    #       matrix with number of rows matching number of rows in W.
+    #
+    # Returns:
+    #   NULL
+    normalize <- function(X) X/rowSums(X)
+    ind <- sort(as.vector(group), index.return = TRUE)
+    ind <- ind$ix
+
+    diag(W) <- median(as.vector(W))
+    W <- normalize(W)
+    W <- W + t(W)
+    x <- heatmap(W[ind, ind],scale="none",Rowv=NA,Colv=NA, ColSideColors=ColSideColors[ind], labRow = FALSE, labCol = FALSE)
+    return(x)
+}
+```
+
+```{r}
+library(RColorBrewer)
+x <- colorRampPalette(brewer.pal(8, "Blues"))(25)
+```
+
+```{r}
+displayClusters(W2,group)
+```
+  
+```{r}
+color_group <- group
+color_group[color_group == 1] <- "#8FD4B9"
+color_group[color_group == 2] <- "#7AC4F8"
+color_group[color_group == 3] <- "#F99F8A"
+```
+
+```{r}
+pdf("results/figures/Heatmap_lipids_cocomo_SNF_2.pdf", height = 4.5, width = 5)
+displayClusters2(W1,group, color_group)
+dev.off()
+pdf("results/figures/Heatmap_metabolites_cocomo_SNF_2.pdf", height = 4.5, width = 5)
+displayClusters2(W2,group, color_group)
+dev.off()
+pdf("results/figures/Heatmap_microbiome_cocomo_SNF_2.pdf", height = 4.5, width = 5)
+displayClusters2(W3,group, color_group)
+dev.off()
+pdf("results/figures/Heatmap_whole_cocomo_SNF_2.pdf", height = 4.5, width = 5)
+displayClusters2(W,group, color_group)
+dev.off()
+```
+
+```{r}
+displayClusters(W,group);
+#SNFNMI = Cal_NMI(group, truelabel)
+ConcordanceMatrix = Concordance_Network_NMI(list(W, W1,W2,W3));
+sum(ConcordanceMatrix)
+```
+
+```{r}
+```
+
+
+```{r}
+n_clus <- 2:10
+x <- my_estimateNumberOfClustersGivenGraph(W, NUMC=n_clus)
+
+table_measures <- data.frame(cluster = n_clus, eigen_gap = x[[1]], rotation_cost = unlist(x[[2]]))
+```
+## figure
+```{r}
+library(ggplot2)
+```
+
+```{r}
+scaleFactor <- max(table_measures$eigen_gap) / max(table_measures$rotation_cost)
+```
+
+```{r}
+ggplot(table_measures, aes(x=cluster)) +
+  geom_line(aes(y=eigen_gap), method="loess", col="blue", size=2) +
+  geom_line(aes(y=rotation_cost * scaleFactor), method="loess", col="red" , size=2) +
+  scale_y_continuous(name="eigen gap", sec.axis=sec_axis(~./scaleFactor, name="rotation cost"))+ 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)), legend.position = "none") +
+  theme(
+    axis.title.y.left=element_text(color="blue"),
+    axis.text.y.left=element_text(color="blue"),
+    axis.title.y.right=element_text(color="red"),
+    axis.text.y.right=element_text(color="red")
+  )
+ggsave("results/figures/test_SNF_selection_clusters.pdf")
+```
+
+```{r}
+library(ComplexHeatmap)
+```
+
+##cluster_rows = FALSE, col = col, cluster_columns = FALSE
+```{r}
+col = colorRamp2(c(0, 0.0004, 0.002), c("white", "pink","red"))
+
+colnames(W1) <- NULL
+rownames(W1) <- NULL
+pdf("results/figures/Heatmap_lipids_cocomo_SNF.pdf", height = 4.5, width = 5)
+Heatmap(W1, col = col)
+dev.off()
+```
+```{r}
+col = colorRamp2(c(0.0001, 0.0003, 0.0004), c("white", "pink","red"))
+
+colnames(W2) <- NULL
+rownames(W2) <- NULL
+
+Heatmap(W2, col = col)
+pdf("results/figures/Heatmap_metabolome_cocomo_SNF.pdf", height = 4.5, width = 5)
+Heatmap(W2, col = col)
+dev.off()
+```
+```{r}
+col = colorRamp2(c(0.0001, 0.001, 0.0025), c("white", "pink","red"))
+
+colnames(W3) <- NULL
+rownames(W3) <- NULL
+
+Heatmap(W3, col)
+pdf("results/figures/Heatmap_microbiome_cocomo_SNF.pdf", height = 4.5, width = 5)
+Heatmap(W3, col = col)
+dev.off()
+```
+```{r}
+min(W)
+max(W)
+```
+
+```{r}
+col = colorRamp2(c(0.008, 0.0098, 0.015), c("white", "pink","red"))
+
+colnames(W) <- NULL
+rownames(W) <- NULL
+
+Heatmap(W, col)
+pdf("results/figures/Heatmap_3_layers_cocomo_SNF.pdf", height = 4.5, width = 5)
+Heatmap(W, col = col)
+dev.off()
+```
+
+```{r}
+library(Matrix)
+colnames(W) <- colnames(Dist3)
+rownames(W) <- colnames(Dist3)
+W[lower.tri(W)] <- 0 
+W <- melt(W)
+W <- data.frame(W[W$Var1 != W$Var2,])
+W <- W[W$value > 0.011,]
+nrow(W)
+write.csv(W, "processing/SNF_3_cluster.csv")
+```
+```{r}
+library(Matrix)
+W1 = affinityMatrix(Dist1, K, alpha)
+W1[lower.tri(W1)] <- 0 
+W1 <- melt(W1)
+W1 <- data.frame(W1[W1$Var1 != W1$Var2,])
+nrow(W1[W1$value > 0.00049,])
+W1 <- W1[W1$value > 0.00049,]
+write.csv(W1, "processing/SNF_3_cluster_W1.csv")
+```
+```{r}
+library(Matrix)
+W2 = affinityMatrix(Dist2, K, alpha)
+W2[lower.tri(W2)] <- 0 
+W2 <- melt(W2)
+W2 <- data.frame(W2[W2$Var1 != W2$Var2,])
+nrow(W2[W2$value > 0.0002419,])
+W2 <- W2[W2$value > 0.0002419,]
+write.csv(W2, "processing/SNF_3_cluster_W2.csv")
+```
+```{r}
+library(Matrix)
+W3 = affinityMatrix(Dist3, K, alpha)
+W3[lower.tri(W3)] <- 0 
+W3 <- melt(W3)
+W3 <- data.frame(W3[W3$Var1 != W3$Var2,])
+nrow(W3[W3$value > 0.00118,])
+W3 <- W3[W3$value > 0.00118,]
+write.csv(W3, "processing/SNF_3_cluster_W1.csv")
+```
+```{r}
+names(W1)[3] <- "value_W1"
+names(W2)[3] <- "value_W2"
+names(W3)[3] <- "value_W3"
+names(W)[3] <- "value_W"
+```
+
+
+```{r}
+ConcordanceMatrix
+```
+
+```{r}
+rownames(ConcordanceMatrix) = c("SNF", "lip", "met", "micro")
+colnames(ConcordanceMatrix) = c("SNF", "lip", "met", "micro")
+```
+
+```{r}
+library(ComplexHeatmap)
+
+pdf("results/figures_2/NMI_matrix_selection_clusters_new_figure.pdf")
+col = colorRamp2(c(0.2, 0.4,1), c("white", "#cc495f","#7d2e3b"))
+Heatmap(ConcordanceMatrix, cluster_rows = FALSE, col = col, cluster_columns = FALSE)
+dev.off()
+```
+
+
+each fold : compute the mean rank of all runs, and then select the parameters with the lowest mean rank
+
+```{r}
+
+```
+
+

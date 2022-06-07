@@ -1,0 +1,208 @@
+---
+title: "KW metabolomics"
+output: html_notebook
+---
+
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+
+
+```{r}
+library(xlsx)
+library(gplots)
+library(ComplexHeatmap)
+library(circlize)
+library(limma)
+library("colorspace")
+library(ggplot2)
+library(dplyr)
+library(scales)
+```
+
+```{r}
+col <- c("#6b8150", "#2273C3","#EFC144","#868686")
+```
+
+
+## load data
+```{r}
+data_met <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/metabolomics_log2_plusHC.csv", check.names = FALSE)
+data_met$cluster <- factor(data_met$cluster, levels = c("Ctrl", 1, 2, 3))
+```
+
+```{r}
+data <- data_met
+```
+
+
+data <- data.frame(cluster= data$cluster, data$abacavir)
+c1 <- data[data$cluster == 1, ]
+c2 <- data[data$cluster == 2, ]
+c3 <- data[data$cluster == 3, ]
+ctrl <- data[data$cluster == "Ctrl", ]
+mean(c1$data.abacavir) - mean(ctrl$data.abacavir)
+
+## run KW
+```{r}
+DGE <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/LIMMA_results_metabolites_with_HC.csv")
+table_DGE <- data.frame(Metabolite = unique(DGE$BIOCHEMICAL), LFC_G1G2 = NA, LFC_G1G3 = NA, LFC_G2G3 =NA, LFC_C1_Ctrl = NA, LFC_C2_Ctrl = NA, LFC_C3_Ctrl = NA, FDR_G1G2 = NA, FDR_G1G3 = NA, FDR_G2G3 =NA, FDR_C1_Ctrl = NA, FDR_C2_Ctrl = NA, FDR_C3_Ctrl = NA, pval_kruskal = NA)
+```
+
+```{r}
+for (i in 1:nrow(table_DGE)){
+  data_4 <- data.frame(cluster = data$cluster, data[,colnames(data) == DGE$BIOCHEMICAL[i]])
+  c1 <- data[data$cluster == 1, colnames(data) == DGE$BIOCHEMICAL[i]]
+  c2 <- data[data$cluster == 2,colnames(data) == DGE$BIOCHEMICAL[i]]
+  c3 <- data[data$cluster == 3,colnames(data) == DGE$BIOCHEMICAL[i]]
+  ctrl <- data[data$cluster == "Ctrl",colnames(data) == DGE$BIOCHEMICAL[i]]
+  
+  table_DGE[i, 2] <- DGE$logFC[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group2-group1"]
+  table_DGE[i, 3] <- DGE$logFC[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group3-group1"]
+  table_DGE[i, 4] <- DGE$logFC[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group3-group2"]
+  table_DGE[i, 5] <- DGE$logFC[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group1-groupCtrl"]
+  table_DGE[i, 6] <- DGE$logFC[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group2-groupCtrl"]
+  table_DGE[i, 7] <- DGE$logFC[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group3-groupCtrl"]
+  table_DGE[i, 8] <- DGE$adj.P.Val[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group2-group1"]
+  table_DGE[i, 9] <- DGE$adj.P.Val[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group3-group1"]
+  table_DGE[i, 10] <- DGE$adj.P.Val[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group3-group2"]
+  table_DGE[i, 11] <- DGE$adj.P.Val[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group1-groupCtrl"]
+  table_DGE[i, 12] <- DGE$adj.P.Val[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group2-groupCtrl"]
+  table_DGE[i, 13] <- DGE$adj.P.Val[DGE$BIOCHEMICAL == DGE$BIOCHEMICAL[i] & DGE$Comp == "group3-groupCtrl"]
+  table_DGE[i, 14] <- kruskal.test(data_4[,2] ~ cluster, data = data_4)$p.value
+}
+
+table_DGE$FDR_kruskal <- p.adjust(table_DGE$pval_kruskal, method = "fdr")
+
+table_DGE$LFC_G1G2 <- ifelse(table_DGE$FDR_kruskal < 0.05, table_DGE$LFC_G1G2, NA)
+table_DGE$LFC_G1G3 <- ifelse(table_DGE$FDR_kruskal < 0.05, table_DGE$LFC_G1G3, NA)
+table_DGE$LFC_G2G3 <- ifelse(table_DGE$FDR_kruskal < 0.05, table_DGE$LFC_G2G3, NA)
+
+table_DGE$LFC_C1_Ctrl <- ifelse(table_DGE$FDR_kruskal < 0.05, table_DGE$LFC_C1_Ctrl, NA)
+table_DGE$LFC_C2_Ctrl <- ifelse(table_DGE$FDR_kruskal < 0.05, table_DGE$LFC_C2_Ctrl, NA)
+table_DGE$LFC_C3_Ctrl <- ifelse(table_DGE$FDR_kruskal < 0.05, table_DGE$LFC_C3_Ctrl, NA)
+
+
+table_DGE$LFC_G1G2 <- ifelse(table_DGE$FDR_G1G2 < 0.05, table_DGE$LFC_G1G2, NA)
+table_DGE$LFC_G1G3 <- ifelse(table_DGE$FDR_G1G3 < 0.05, table_DGE$LFC_G1G3, NA)
+table_DGE$LFC_G2G3 <- ifelse(table_DGE$FDR_G2G3 < 0.05, table_DGE$LFC_G2G3, NA)
+
+table_DGE$LFC_C1_Ctrl <- ifelse(table_DGE$FDR_C1_Ctrl < 0.05, table_DGE$LFC_C1_Ctrl, NA)
+table_DGE$LFC_C2_Ctrl <- ifelse(table_DGE$FDR_C2_Ctrl < 0.05, table_DGE$LFC_C2_Ctrl, NA)
+table_DGE$LFC_C3_Ctrl <- ifelse(table_DGE$FDR_C3_Ctrl < 0.05, table_DGE$LFC_C3_Ctrl, NA)
+
+
+table_DGE_filt <- table_DGE
+
+table_DGE_filt <- table_DGE_filt[table_DGE_filt$FDR_kruskal < 0.05, ]
+
+write.csv(table_DGE_filt, "processing/processing_KW_metabolomics_sum.csv")
+```
+
+```{r}
+cluster <- data$cluster
+data_2 <- data.frame(t(data[,-c(1,2)]))
+data_2$Metabolite <- rownames(data_2)
+data_2 <- merge(table_DGE_filt, data_2, by = "Metabolite")
+```
+
+## heatmap metabolites
+```{r}
+col_fun1 = colorRamp2(c(-8,-5,-1, 0,1,5,8), c("#7F7F00","#B2B200" ,"#E5E500","white","#BF7FBF","#993299","#590059"))
+col_fun_2 = colorRamp2(c(-1, 0, 1), c("blue", "white", "red"))
+```
+
+```{r}
+names(data_2)
+```
+
+```{r}
+data_3 <- t(data_2[,-c(1:15)])
+data_3 <- data.frame(scale(data_3))
+max(data_3)
+min(data_3)
+```
+
+```{r}
+colnames(data_3) <- data_2$Metabolite
+```
+
+```{r}
+pdf("results/figures/figure_2_heatmap_metabolomics_3_layers_integration.pdf", width = 12, height = 30)
+ht = Heatmap(t(data_3),column_order = sort(colnames(t(data_3))),  col = col_fun1, show_column_names = FALSE, column_split = cluster, column_title = c("Ctrl",1, 2, 3), 
+             column_title_gp = gpar(fill = col), border = FALSE, column_gap = unit(2, "mm"), right_annotation = rowAnnotation(C2vsC1 = data_2$LFC_G1G2,
+                                              C3vsC1 = data_2$LFC_G1G3,
+                                              C3vsC2 = data_2$LFC_G2G3,
+                                              C1vsCtrl = data_2$LFC_C1_Ctrl,
+                                              C2vsCtrl = data_2$LFC_C2_Ctrl,
+                                              C3vsCtrl = data_2$LFC_C3_Ctrl,
+                                              col = list(C2vsC1 = col_fun_2, C3vsC1 = col_fun_2, C3vsC2 = col_fun_2, C1vsCtrl = col_fun_2, C2vsCtrl = col_fun_2, C3vsCtrl = col_fun_2), show_legend = FALSE))
+draw(ht)
+dev.off()
+```
+
+```{r}
+c1
+```
+
+```{r}
+max(data[,-c(1:5)])
+min(data[,-c(1:5)])
+```
+
+
+```{r}
+data[,-c(1:6)] <- data.frame(t(scale(t(data[,-c(1:6)]))))
+```
+
+```{r}
+cluster <- factor(cluster, levels = c("Ctrl", 1, 2, 3))
+```
+
+
+
+```{r}
+msea1 <- read.delim("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/GSEA/met_G1G2.txt")
+msea2 <- read.delim("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/GSEA/met_G1G3.txt")
+msea3 <- read.delim("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/GSEA/met_G2G3.txt")
+```
+
+```{r}
+data$LFC_G1G2 <- ifelse(data$Metabolite %in% msea1$x, data$LFC_G1G2, NA)
+data$LFC_G1G3 <- ifelse(data$Metabolite %in% msea2$x, data$LFC_G1G3, NA)
+data$LFC_G2G3 <- ifelse(data$Metabolite %in% msea3$x, data$LFC_G2G3, NA)
+```
+
+```{r}
+path <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/metabolites_pathways.csv")
+names(path)[1] <- "Metabolite"
+data <- merge(path, data, by = "Metabolite")
+```
+
+```{r}
+data$SUPER.PATHWAY <- as.factor(as.vector(data$SUPER.PATHWAY))
+table_path <- data.frame(Path = levels(data$SUPER.PATHWAY), 1:9)
+data$SUPER.PATHWAY <- as.integer(data$SUPER.PATHWAY)
+write.csv(table_path, "processing/label_metabolomics_heatmap.csv")
+```
+
+```{r}
+pdf("results/figures/heatmap_metabolites_3_layers_integration.pdf", width = 12, height = 8)
+ht = Heatmap(data[,-c(1:8)], col = col_fun1, column_order = sort(colnames(data)[-c(1:8)]), show_column_names = FALSE, column_split = cluster, row_split = data$SUPER.PATHWAY,column_title = c("Ctrl", 1, 2, 3), 
+             column_title_gp = gpar(fill = col), border = FALSE, column_gap = unit(2, "mm"), 
+             right_annotation = rowAnnotation(C1C2 = data$LFC_G1G2,
+                                              C1C3 = data$LFC_G1G3,
+                                              C2C3 = data$LFC_G2G3,
+                                              col = list(C1C2 = col_fun_2, C1C3 = col_fun_2, C2C3 = col_fun_2), show_legend = FALSE), row_labels = rownames(data))
+draw(ht)
+dev.off()
+```
+
+

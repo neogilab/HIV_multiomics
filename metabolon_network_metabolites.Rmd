@@ -1,0 +1,102 @@
+---
+title: "Metabolon network"
+output: html_notebook
+---
+
+
+1) separate EC/VP and EC/HC
+2) select metabolites with qvalue < 0.1 and pvalue <0.05
+3 Cytoscape input :
+Nodes :
+Node_1  Type Group_path Group_super_path
+metabolite met group_path
+path path path super_path
+superpath superpath no superpath
+
+
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(xlsx)
+library(reshape2)
+```
+```{r}
+lip <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/lipids_pathways.csv")
+met <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/metabolites_pathways.csv")
+```
+
+```{r}
+DGE <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/LIMMA_results_metabolites_lipids.csv")
+DGE$logFC <- ifelse(DGE$adj.P.Val < 0.05, DGE$logFC, NA)
+DGE <- select(DGE, BIOCHEMICAL, logFC, Comp)
+DGE <- split(DGE[,-3], DGE$Comp, drop=TRUE)
+```
+
+```{r}
+names(DGE[[1]])[2] <- "LFC_G1G2"
+names(DGE[[2]])[2] <- "LFC_G1G3"
+names(DGE[[3]])[2] <- "LFC_G3G2"
+```
+
+```{r}
+DGE_2 <- merge(DGE[[1]], DGE[[2]], by = "BIOCHEMICAL", all.x = TRUE, all.y = TRUE)
+DGE_2 <- merge(DGE_2, DGE[[3]], by = "BIOCHEMICAL", all.x = TRUE, all.y = TRUE)
+```
+
+```{r}
+x <- lip$BIOCHEMICAL[grep("Total",lip$BIOCHEMICAL)]
+lip <- merge(lip, DGE_2, by = "BIOCHEMICAL")
+lip <- lip[!lip$BIOCHEMICAL %in% x,]
+met <- merge(met, DGE_2, by = "BIOCHEMICAL")
+```
+
+```{r}
+met_2 <- met
+met_2 <- met_2[,-c(2,3)]
+
+lip_2 <- lip
+lip_2 <- lip_2[,-c(2,3)]
+
+names(met_2)
+```
+```{r}
+met_2$Type <- "BIO"
+sup <- data.frame(BIOCHEMICAL = unique(met$SUPER.PATHWAY), LFC_G1G2 = 0, LFC_G1G3 = 0, LFC_G3G2 = 0, Type = "SUP")
+sub <- data.frame(BIOCHEMICAL = unique(met$SUB.PATHWAY), LFC_G1G2 = NA, LFC_G1G3 = NA, LFC_G3G2 = NA, Type = "SUB")
+table_nodes <- rbind(met_2, sup, sub)
+write.table(table_nodes, "results/network/metabolites_table_nodes.csv", quote = FALSE, row.names = F, sep = "\t")
+```
+
+```{r}
+lip_2$Type <- "BIO"
+sup <- data.frame(BIOCHEMICAL = unique(lip$SUPER_PATHWAY), LFC_G1G2 = 0, LFC_G1G3 = 0, LFC_G3G2 = 0, Type = "SUP")
+sub <- data.frame(BIOCHEMICAL = unique(lip$SUB_PATHWAY), LFC_G1G2 = NA, LFC_G1G3 = NA, LFC_G3G2 = NA, Type = "SUB")
+table_nodes <- rbind(lip_2, sup, sub)
+write.table(table_nodes, "results/network/lipids_table_nodes.csv", quote = FALSE, row.names = F, sep = "\t")
+```
+
+
+```{r}
+sup <- data.frame(Node_1 = met$SUPER.PATHWAY, Node_2 = met$SUB.PATHWAY)
+sup <- sup[!duplicated(sup),]
+
+sub <- data.frame(Node_1 = met$SUB.PATHWAY, Node_2 = met$BIOCHEMICAL)
+sub <- sub[!duplicated(sub),]
+
+table_edges <- rbind(sup, sub)
+write.table(table_edges, "results/network/metabolites_table_edges.csv", quote = FALSE, row.names = F, sep = "\t")
+```
+
+```{r}
+sup <- data.frame(Node_1 = lip$SUPER_PATHWAY, Node_2 = lip$SUB_PATHWAY)
+sup <- sup[!duplicated(sup),]
+
+sub <- data.frame(Node_1 = lip$SUB_PATHWAY, Node_2 = lip$BIOCHEMICAL)
+sub <- sub[!duplicated(sub),]
+table_edges <- rbind(sup, sub)
+write.table(table_edges, "results/network/lipids_table_edges.csv", quote = FALSE, row.names = F, sep = "\t")
+```

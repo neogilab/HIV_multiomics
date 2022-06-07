@@ -1,0 +1,176 @@
+---
+title: "mofa_3_layers"
+output: html_notebook
+---
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+
+
+```{r}
+name_ana <- "microbiome_project"
+```
+
+```{r}
+library(xlsx)
+library(dplyr)
+library(SNFtool)
+library(ROCR)
+library(cvAUC)
+library(circlize)
+library(MOFA2)
+library(compositions)
+```
+
+```{r}
+clinical_data <- read.csv("processing/clinical_data_clean_for_regression_models.csv")
+```
+
+
+/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/data_family_clean.csv
+## Load data
+```{r}
+data_lip <- read.csv("data/clp_lipidomics_data.csv")
+data_met <- read.csv("data/cocomo_norm_data_filt.csv")
+data_met <- data_met[data_met$SUPER.PATHWAY !="",]
+```
+
+## lipidome
+```{r}
+data_lip <- data_lip[data_lip$SUPER_PATHWAY !="",]
+data_lip <- data_lip[,c(1, 9:228)]
+names(data_lip) <- gsub("X", "", names(data_lip))
+lip <- data_lip$BIOCHEMICAL
+data_lip <- data.frame(t(data_lip[,-1]))
+colnames(data_lip) <- lip
+grep("Total", colnames(data_lip))
+data_lip <- data_lip[rownames(data_lip) %in% clinical_data$X, ]
+data_lip <- data_lip[,1:963]
+grep("Total", colnames(data_lip))
+data_lip <- log2(data_lip)
+#data_lip <- data.frame(t(scale(t(data_lip), scale = TRUE)))
+data_lip <- data_lip[, sapply(data_lip, var) > 0.3 ]
+```
+
+## metabolome
+```{r}
+data_met <- data_met[,c(1,13:232)]
+names(data_met)[-1] <- gsub("X", "", names(data_met)[-1])
+met <- data_met$BIOCHEMICAL
+data_met <- data.frame(t(data_met[,-1]))
+colnames(data_met) <- met
+data_met <- data_met[rownames(data_met) %in% clinical_data$X, ]
+data_met <- log2(data_met)
+#data_met <- data.frame(t(scale(t(data_met), scale = TRUE)))
+data_met <- data_met[, sapply(data_met, var) > 0.3]
+data_met <- data_met[order(match(rownames(data_met), rownames(data_lip))), ]
+```
+
+```{r}
+convert_met <- data.frame(met = colnames(data_met), nb = paste0("Met", 1:ncol(data_met)))
+colnames(data_met) <- convert_met$nb
+```
+
+## microbiome
+```{r}
+data_mi <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/data_count_microbiome.csv")
+rownames(data_mi) <- data_mi$X
+data_mi$X <- NULL
+rownames(data_mi) <- gsub("X","",rownames(data_mi))
+data_mi <- data_mi[rownames(data_mi) %in% clinical_data$X, ]
+data_mi <- data.frame(clr(data_mi))
+#data_mi <- data.frame(t(scale(t(data_mi), scale = FALSE)))
+data_mi <- data_mi[, sapply(data_mi, var) > 0.2]
+data_mi <- data_mi[order(match(rownames(data_mi), rownames(data_lip))), ]
+```
+
+
+```{r}
+data_3 <-as.matrix(data_met)
+hist(data_3 , prob=T)
+curve(dnorm(x,mean(data_3),sd(data_3)),add=T,col="red")
+```
+
+```{r}
+data_3 <-as.matrix(data_lip)
+hist(data_3 , prob=T)
+curve(dnorm(x,mean(data_3),sd(data_3)),add=T,col="red")
+```
+
+```{r}
+data_3 <-as.matrix(data_mi)
+hist(data_3 , prob=T)
+curve(dnorm(x,mean(data_3),sd(data_3)),add=T,col="red")
+```
+
+```{r}
+data_2 <- list(Lipids = t(data_lip), Metabolites = t(data_met), Microbiome = t(data_mi))
+```
+
+```{r}
+rownames(data_lip)
+```
+
+```{r}
+clinical_data <- read.csv("processing/clinical_data_clean_for_regression_models.csv")
+clinical_data <- select(clinical_data, X, cluster)
+rownames(clinical_data) <- clinical_data$X
+clinical_data <- clinical_data[order(match(rownames(clinical_data), rownames(data_lip))), ]
+
+groups <- clinical_data$cluster
+```
+
+## Run mofa
+```{r}
+MOFAobject <- create_mofa(data_2)
+```
+```{r}
+group_data <- data.frame(MOFAobject@samples_metadata)
+clinical_data
+names(clinical_data)[1] <- "sample"
+clinical_data_2 <- merge(group_data, clinical_data, by = "sample")
+```
+
+```{r}
+plot_data_overview(MOFAobject)
+```
+
+```{r}
+data_opts <- get_default_data_options(MOFAobject)
+head(data_opts)
+```
+
+```{r}
+train_opts <- get_default_training_options(MOFAobject)
+head(train_opts)
+```
+
+```{r}
+model_opts <- get_default_model_options(MOFAobject)
+head(model_opts)
+```
+
+```{r}
+MOFAobject <- prepare_mofa(
+  object = MOFAobject,
+  data_options = data_opts,
+  model_options = model_opts,
+  training_options = train_opts
+)
+```
+
+
+```{r}
+MOFAobject.trained <- run_mofa(MOFAobject, "results/mofa_model_4")
+```
+
+```{r}
+MOFAobject.trained
+```

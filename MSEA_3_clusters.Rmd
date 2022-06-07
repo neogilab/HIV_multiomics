@@ -1,0 +1,142 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+
+
+/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/lip_CTG2.txt
+/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/lip_CTG1.txt
+/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/met_G1G2.txt
+/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/met_CTG2.txt
+/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/lip_G2G3.txt
+/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/lip_G1G3.txt
+/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/lip_G1G2.txt
+/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/lip_CTG3.txt
+/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/met_G3G2.txt
+/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/met_G1G3.txt
+/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/met_CTG3.txt
+
+
+## load pathways metabolome
+```{r}
+cutoff <- 0.2
+
+c1 <- read.delim("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/met_CTG1.txt")
+c1 <- c1[c1$Adjusted.P.value < cutoff,]
+c2 <- read.delim("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/met_CTG2.txt")
+c2 <- c2[c2$Adjusted.P.value < cutoff,]
+c3 <- read.delim("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/met_CTG3.txt")
+c3 <- c3[c3$Adjusted.P.value < cutoff,]
+c4 <- read.delim("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/met_G1G2.txt")
+c4 <- c4[c4$Adjusted.P.value < cutoff,]
+c5 <- read.delim("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/met_G1G3.txt")
+c5 <- c5[c5$Adjusted.P.value < cutoff,]
+c6 <- read.delim("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/met_G3G2.txt")
+c6 <- c6[c6$Adjusted.P.value < cutoff,]
+
+
+
+
+c1$Comp <- "CTG1"
+c2$Comp <- "CTG2"
+#c3$Comp <- "CTG3"
+
+c4$Comp <- "G1G2"
+c5$Comp <- "G1G3"
+c6$Comp <- "G2G3"
+```
+
+```{r}
+msea <- rbind(c1, c2, c4, c5, c6)
+msea <- msea[msea$Overlap != "1/1",]
+```
+
+```{r}
+msea$value <- 1
+msea$Nb_metabolites <- as.numeric(gsub("\\/.*", "", msea$Overlap))
+```
+```{r}
+library(Cairo)
+library(viridis)
+```
+
+```{r}
+cairo_pdf("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/figures/3_clusters_gseapy_0_2_metabolites.pdf", height = 4, width = 4,family="mono")
+ a <- ggplot(msea, aes(x = value, y = Term, size = Nb_metabolites))+
+        geom_point()+ scale_x_continuous(limits=c(0.9999999999, 1.0000000001))+ theme(axis.line=element_blank(),axis.text.x=element_blank(),axis.ticks=element_blank(),
+          axis.title.x=element_blank(),
+          axis.title.y=element_blank(),
+          panel.background=element_blank(),panel.border=element_blank(),panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),plot.background=element_blank(), axis.text.y = element_text(size=8, color = "black"))+ scale_color_viridis(discrete = TRUE)+ facet_grid(~ Comp)
+a
+dev.off()
+#ggsave("results/figures/Figure1e_MSEA_gseapy_Metabolon.pdf", height = 4, width = 12)
+```
+```{r}
+cutoff <- 0.2
+
+c1 <- read.delim("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/lip_CTG1.txt")
+c1 <- c1[c1$Adjusted.P.value < cutoff,]
+c2 <- read.delim("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/lip_CTG2.txt")
+c2 <- c2[c2$Adjusted.P.value < cutoff,]
+c3 <- read.delim("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/lip_CTG3.txt")
+c3 <- c3[c3$Adjusted.P.value < cutoff,]
+c4 <- read.delim("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/lip_G1G2.txt")
+c4 <- c4[c4$Adjusted.P.value < cutoff,]
+c5 <- read.delim("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/lip_G1G3.txt")
+c5 <- c5[c5$Adjusted.P.value < cutoff,]
+c6 <- read.delim("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA/lip_G2G3.txt")
+c6 <- c6[c6$Adjusted.P.value < cutoff,]
+
+
+
+
+c1$Comp <- "CTG1"
+c2$Comp <- "CTG2"
+c3$Comp <- "CTG3"
+
+c4$Comp <- "G1G2"
+c5$Comp <- "G1G3"
+c6$Comp <- "G2G3"
+```
+
+```{r}
+msea <- rbind(c1, c2, c3, c4, c5, c6)
+msea <- msea[msea$Overlap != "1/1",]
+```
+
+```{r}
+msea$value <- 1
+msea$Nb_lipids <- as.numeric(gsub("\\/.*", "", msea$Overlap))
+```
+```{r}
+library(Cairo)
+library(viridis)
+```
+
+```{r}
+cairo_pdf("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/figures/3_clusters_gseapy_0_2_lipids.pdf", height = 4, width = 8,family="mono")
+ a <- ggplot(msea, aes(x = value, y = Term, size = Nb_lipids))+
+        geom_point()+ scale_x_continuous(limits=c(0.9999999999, 1.0000000001))+ theme(axis.line=element_blank(),axis.text.x=element_blank(),axis.ticks=element_blank(),
+          axis.title.x=element_blank(),
+          axis.title.y=element_blank(),
+          panel.background=element_blank(),panel.border=element_blank(),panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),plot.background=element_blank(), axis.text.y = element_text(size=8, color = "black"))+ scale_color_viridis(discrete = TRUE)+ facet_grid(~ Comp)
+a
+dev.off()
+#ggsave("results/figures/Figure1e_MSEA_gseapy_Metabolon.pdf", height = 4, width = 12)
+```
+```{r}
+
+```
+

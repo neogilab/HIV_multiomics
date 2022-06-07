@@ -1,0 +1,66 @@
+---
+title: "HIV index comparison"
+output: html_notebook
+---
+
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+
+```{r}
+library(xlsx)
+```
+
+```{r}
+index <- read.xlsx("/home/flomik/Desktop/Code-PHD/3_layers_integration/data/HIV-index.xlsx", 1)
+index$id <- gsub("\\..*", "", index$id)
+names(index)[1] <- "X"
+```
+
+## load clusters
+```{r}
+cluster <- read.csv("processing/cluster_SNF_3_omics_3_clusters_plusHC.csv")
+cluster$X <- NULL
+names(cluster)[2] <- "X"
+cluster <- cluster[!is.na(cluster$cluster),]
+```
+
+```{r}
+data <- merge(index, cluster, by = "X")
+```
+
+```{r}
+results <- data.frame(Measure = NA, pvalue_G1_G2 = NA, pvalue_G2_G3 = NA, pvalue_G1_G3 = NA, pvalue_KW = NA)
+```
+
+```{r}
+for (i in 2){
+  print(names(data)[i])
+  c1 <- data[data$cluster == 1,i]
+  c2 <- data[data$cluster == 2,i]
+  c3 <- data[data$cluster == 3,i]
+  ctrl <- data[data$cluster == "Ctrl",i]
+  results[i-1, 1] <- names(data)[i]
+  results[i-1, 2] <- wilcox.test(c1, c2)$p.value
+  results[i-1, 3] <- wilcox.test(c2, c3)$p.value
+  results[i-1, 4] <- wilcox.test(c1, c3)$p.value
+  results[i-1, 5] <- kruskal.test(data[,i] ~ cluster, data = data)$p.value
+}
+
+results$FDR_G1G2 <- p.adjust(results$pvalue_G1_G2, method = "fdr")
+results$FDR_G1G3 <- p.adjust(results$pvalue_G1_G3, method = "fdr")
+results$FDR_G2G3 <- p.adjust(results$pvalue_G2_G3, method = "fdr")
+
+results$FDR_KW <- p.adjust(results$pvalue_KW, method = "fdr")
+
+results_filt <- results[results$FDR_KW < 0.1,]
+
+write.csv(results, "processing/microbiome_index_HIV_clusters_pvalues.csv")
+```
