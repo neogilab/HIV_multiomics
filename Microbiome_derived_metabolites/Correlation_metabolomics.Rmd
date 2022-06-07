@@ -1,0 +1,93 @@
+---
+title: "Correlations metabolomics"
+output: html_notebook
+---
+
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+
+
+```{r}
+data_met <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/metabolomics_log2_plusHC.csv", check.names = FALSE)
+data_met$cluster <- factor(data_met$cluster, levels = c("Ctrl", 1, 2, 3))
+data <- data_met[data_met$cluster != "Ctrl",]
+data$X <- NULL
+data$cluster <- NULL
+```
+
+```{r}
+data <- data[, colSums(data)!= 0]
+data <- data[, sapply(data, var) > 0.01]
+```
+
+```{r}
+flat_cor_mat <- function(cor_r, cor_p){
+  #This function provides a simple formatting of a correlation matrix
+  #into a table with 4 columns containing :
+    # Column 1 : row names (variable 1 for the correlation test)
+    # Column 2 : column names (variable 2 for the correlation test)
+    # Column 3 : the correlation coefficients
+    # Column 4 : the p-values of the correlations
+  library(tidyr)
+  library(tibble)
+  cor_r <- rownames_to_column(as.data.frame(cor_r), var = "row")
+  cor_r <- gather(cor_r, column, cor, -1)
+  cor_p <- rownames_to_column(as.data.frame(cor_p), var = "row")
+  cor_p <- gather(cor_p, column, p, -1)
+  cor_p_matrix <- left_join(cor_r, cor_p, by = c("row", "column"))
+  cor_p_matrix
+}
+```
+
+```{r}
+library(Hmisc)
+library(dplyr)
+```
+
+
+```{r}
+cor_3 <- rcorr(as.matrix(data), type = "spearman")
+
+cor_3$r[upper.tri(cor_3$r)] <- NA
+
+my_cor_matrix <- flat_cor_mat(cor_3$r, cor_3$P)
+
+
+my_cor_matrix$padj <- p.adjust(my_cor_matrix$p, method = "fdr")
+my_cor_matrix$cor <- ifelse(my_cor_matrix$padj > 0.02, 0, my_cor_matrix$cor)
+my_cor_matrix <- my_cor_matrix[complete.cases(my_cor_matrix), ]
+
+names(my_cor_matrix) <- c("feat1", "feat2", "R", "p", "Padj")
+
+head(my_cor_matrix)
+
+
+path <- paste0("processing/metabolomics_data_HIV_correlations.csv")
+write.csv(my_cor_matrix, path, row.names = FALSE)
+```
+
+
+
+```{r}
+first <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/network/metabolites_MDM_first_neiborgs.csv")
+write.table(first$name, "/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA_Metabolon/first_neibourgs_metabolites.txt", quote = FALSE, row.names = FALSE)
+data <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/network/Table_nodes_3_layers_integration.csv")
+
+write.table(data$Metabolites_names[data$Community == 4], "/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA_Metabolon/Community_4_metabolites.txt", quote = FALSE, row.names = FALSE)
+
+write.table(data$Metabolites_names[data$Community == 3], "/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA_Metabolon/Community_3_metabolites.txt", quote = FALSE, row.names = FALSE)
+```
+
+## MSEA figures
+```{r}
+c1 <- read.delim("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA_Metabolon/MSEA_Com_3.txt")
+c1 <- c1[c1$Adjusted.P.value< 0.1,]
+c2 <- read.delim("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA_Metabolon/MSEA_Com_4.txt")
+c2 <- c2[c2$Adjusted.P.value< 0.1,]
+c3 <- read.delim("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/MSEA_Metabolon/MSEA_first_neiborgs.txt")
+c3 <- c3[c3$Adjusted.P.value< 0.1,]
+```
+
