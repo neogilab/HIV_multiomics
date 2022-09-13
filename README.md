@@ -1,8 +1,7 @@
 # Network-based multi-omics integration reveals metabolic risk profile within treated HIV-infection 
 
-## Abstract
-
-Applying omics technologies has improved our biological understanding of pathology and systemic health status in people living with HIV on antiretroviral therapy (PLWHART). Still, a systematic and in-depth characterization metabolic risk profile during long-term successful treatment is lacking. In this study, we used multi-omics (plasma lipidomic and metabolomic, and fecal 16s microbiome) data-driven stratification and characterization to identify the metabolic risk profile within PLWHART. Through network analysis and similarity network fusion (SNF), we identified three groups of PLWHART (SNF-1 to 3). The SNF-2 (n=44; 45%) had obesity-related clinical features (increased visceral adipose tissue, BMI), higher incidence of metabolic syndrome (MetS), and increased di- and triglycerides despite having higher CD4+ T-cell counts than the other two clusters. The influence of sexual orientation in the microbiome was observed in the SNF-2 and SNF-3, with increased α-diversity compared to SNF-1. Our multi-omics integrative analysis reveals a complex microbial interplay in PLWHART. It identifies a risk cluster of PLWH who may benefit from personalized medicine and lifestyle intervention to improve their metabolic profile and enhance healthy aging. 
+## Description
+Multi-omics characterization of 97 people living with HIV under antiretroviral therapy (lipidomcis, metabolomics, microbiome)
 
 ## Installation
 
