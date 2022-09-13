@@ -45,6 +45,7 @@ BiocManager::install(bio_pkgs)
 
 1) Create folders
 ```
+Rscript creat_folders.R
 ```
 2) Move data files to folder data
 3) Execute R notebooks for producing tables and figures
