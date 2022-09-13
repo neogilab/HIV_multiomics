@@ -15,14 +15,12 @@ cd HIV_multiomics
 
 1. A linux distribution
 
-2. The following python packages
+2. The following python modules
+```
+pip3 install leidenalg
+pip3 install igraph
+```
 
-```
-pip3 install -r requirements.txt
-# This command will install the following modules:
-# igraph==0.8.2
-# leidendag==0.8.0
-```
 3. R and R studio environment and following packages
 Open R and run
 ```
@@ -50,9 +48,7 @@ Rscript create_folders.R
 2) Move data files to folder data
 3) Change path to your own computer
 4) Execute R notebooks for producing tables and figures
-```
-Rscript -e src/1_SNF/SNF_cross_validation.Rmd
-```
+
 ### Author
 
 Flora Mikaeloff
