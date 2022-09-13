@@ -54,3 +54,6 @@ Rscript create_folders.R
 ```
 Rscript -e src/1_SNF/SNF_cross_validation.Rmd
 ```
+### Author
+
+Flora Mikaeloff
