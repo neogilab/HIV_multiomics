@@ -47,5 +47,10 @@ BiocManager::install(bio_pkgs)
 ```
 Rscript create_folders.R
 ```
+
 2) Move data files to folder data
-3) Execute R notebooks for producing tables and figures
+3) Change path to your own computer
+4) Execute R notebooks for producing tables and figures
+```
+Rscript -e src/1_SNF/SNF_cross_validation.Rmd
+```
