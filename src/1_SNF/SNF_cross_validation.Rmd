@@ -10,22 +10,28 @@ output: html_notebook
 rm(list=ls())
 ```
 
+### enter your path to folder
+```{r}
+path <- "~/Desktop/Code-PHD/Git/HIV_multiomics/"
+```
+
 ### set directory
 ```{r setup}
-    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+    knitr::opts_knit$set(root.dir = normalizePath(path)) 
 ```
 
 ```{r}
 name_ana <- "microbiome_project"
 ```
 
+## load packages
 ```{r}
 library(xlsx)
 library(dplyr)
 library(SNFtool)
-library(ROCR)
-library(cvAUC)
 library(circlize)
+library(ggplot2)
+library(ComplexHeatmap)
 ```
 
 ```{r}
@@ -70,7 +76,7 @@ data_met <- data_met[order(match(rownames(data_met), rownames(data_lip))), ]
 
 ## microbiome
 ```{r}
-data_mi <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/relative_abundance_table.csv")
+data_mi <- read.csv("processing/relative_abundance_table.csv")
 rownames(data_mi) <- data_mi$X
 data_mi$X <- NULL
 data_mi <- data.frame(t(data_mi))
@@ -265,10 +271,6 @@ group = SpectralClustering(W,C);###the final subtypes information
 ```
 
 ```{r}
-min(W2)
-```
-
-```{r}
 pca= prcomp(W) 
 df_out <- as.data.frame(pca$x)
 df_out$group <- group
@@ -286,13 +288,12 @@ PCAloadings_2$PC1[x] <- NA
 PCAloadings_2$PC2[x] <- NA
 PCAloadings_2$Variables[x] <- NA
 ```
+
 ```{r}
 col <- c("#2273C3","#EFC144","#868686")
 ```
 
 ```{r}
-library(ggplot2)
-
 gg <- data.frame(cluster=factor(df_out$group), x=df_out$PC1, y=df_out$PC2)
 centroids <- aggregate(cbind(x,y)~cluster,data=gg,mean)
 gg <- merge(gg,centroids,by="cluster",suffixes=c("",".centroid"))
@@ -327,7 +328,7 @@ dev.off()
 ## extract cluters
 ```{r}
 table_cluters <- data.frame(cluster = group, names = rownames(data_lip))
-#write.csv(table_cluters, "processing/cluster_SNF_3_omics_3_clusters_2.csv")
+write.csv(table_cluters, "processing/cluster_SNF_3_omics_3_clusters.csv")
 ```
 
 ```{r}
@@ -402,19 +403,12 @@ ConcordanceMatrix = Concordance_Network_NMI(list(W, W1,W2,W3));
 sum(ConcordanceMatrix)
 ```
 
-```{r}
-```
-
 
 ```{r}
 n_clus <- 2:10
 x <- my_estimateNumberOfClustersGivenGraph(W, NUMC=n_clus)
 
 table_measures <- data.frame(cluster = n_clus, eigen_gap = x[[1]], rotation_cost = unlist(x[[2]]))
-```
-## figure
-```{r}
-library(ggplot2)
 ```
 
 ```{r}
@@ -446,11 +440,7 @@ ggplot(table_measures, aes(x=cluster)) +
   )
 ggsave("results/figures/test_SNF_selection_clusters.pdf")
 ```
-
-```{r}
-library(ComplexHeatmap)
-```
-
+                                                                                                                                                                        
 ##cluster_rows = FALSE, col = col, cluster_columns = FALSE
 ```{r}
 col = colorRamp2(c(0, 0.0004, 0.002), c("white", "pink","red"))
@@ -483,10 +473,7 @@ pdf("results/figures/Heatmap_microbiome_cocomo_SNF.pdf", height = 4.5, width = 5
 Heatmap(W3, col = col)
 dev.off()
 ```
-```{r}
-min(W)
-max(W)
-```
+
 
 ```{r}
 col = colorRamp2(c(0.008, 0.0098, 0.015), c("white", "pink","red"))
@@ -541,6 +528,7 @@ nrow(W3[W3$value > 0.00118,])
 W3 <- W3[W3$value > 0.00118,]
 write.csv(W3, "processing/SNF_3_cluster_W1.csv")
 ```
+
 ```{r}
 names(W1)[3] <- "value_W1"
 names(W2)[3] <- "value_W2"
@@ -559,19 +547,9 @@ colnames(ConcordanceMatrix) = c("SNF", "lip", "met", "micro")
 ```
 
 ```{r}
-library(ComplexHeatmap)
-
-pdf("results/figures_2/NMI_matrix_selection_clusters_new_figure.pdf")
+pdf("results/figures/NMI_matrix_selection_clusters_new_figure.pdf")
 col = colorRamp2(c(0.2, 0.4,1), c("white", "#cc495f","#7d2e3b"))
 Heatmap(ConcordanceMatrix, cluster_rows = FALSE, col = col, cluster_columns = FALSE)
 dev.off()
 ```
-
-
-each fold : compute the mean rank of all runs, and then select the parameters with the lowest mean rank
-
-```{r}
-
-```
-
 

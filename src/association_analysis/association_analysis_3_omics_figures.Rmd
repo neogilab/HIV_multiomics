@@ -1,11 +1,8 @@
 ---
-title: "Figures "
+title: "Figures association analysis"
 output: html_notebook
 ---
 
-
-1) bubble plots pathways
-2) barplots types omics per community
 ### clean environment
 ```{r}
 rm(list=ls())
@@ -13,30 +10,25 @@ rm(list=ls())
 
 ### set directory
 ```{r setup}
-    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+    knitr::opts_knit$set(root.dir = normalizePath("~/HIV_multiomics/")) 
 ```
 
 ```{r}
 library(ggplot2)
 library(dplyr)
+library(stringi)
 ```
+
+
 ## load data
-
-
-
-
 ```{r}
 table_nodes <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/data/network/Table_nodesAA_3_layers_filt_consensus.csv")
-
-#table_nodes <- table_nodes[table_nodes$Community %in% c(1:7),]
-
 results_gsea <- read.csv("results/network/Results_centrality_networksAA_3_layers_filt_consensus.csv")
 ```
 
 ```{r}
 table_edges <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/results/network/network_correlation_positive_AA_3_layers_filt_consensus.csv")
 ```
-
 
 ```{r}
 features_mofa <- read.csv("processing/extracted_MOFA_features.csv")
@@ -174,17 +166,6 @@ ggplot(table_communities, aes(fill=Var1, y=Freq, x=Var2, label = Freq)) +
 ggsave(paste0("results/figures/barplot_type_network_whole.pdf"), height = 6, width = 6)
 ```
 
-ggplot(d3, aes(fill=Category, y=fraction, x=Group))+ 
-    geom_bar(stat="identity", alpha = 1, width = .7, colour="white", lwd=0.1) +
-  labs(x="Comparison",y="Comorbidities frequency")+
-    scale_fill_manual(values = rev(mycols))+
-  geom_text(aes(label=ifelse(fraction >= 0.07, paste0("n = ", count, ", \n", round(fraction*100, 0), "%"),"")), position=position_stack(vjust=0.5), colour="white")+
-  coord_flip() +
-  scale_y_continuous(labels = percent_format()) +
-  labs(y="", x="")
-
-ggsave(paste0("results/figures/barplot_comparisons_LIMMA_COCOMO.pdf"), width = 15, height = 8)
-
 ```{r}
 col_1 <- colorRampPalette(c("#2f2e75", "#dbd9fc"))
 col_2 <- colorRampPalette(c("#6b0c53", "#fcd9f0"))
@@ -252,9 +233,6 @@ i <- 1
 
 ```{r}
 table_nodes <- table_nodes[-1,]
-```
-```{r}
-library(stringi)
 ```
 
 ## create files for pathway analysis
