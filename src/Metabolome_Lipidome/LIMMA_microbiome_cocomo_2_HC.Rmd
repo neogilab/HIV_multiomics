@@ -1,0 +1,375 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+
+```{r}
+library(xlsx)
+library(gplots)
+library(ComplexHeatmap)
+library(circlize)
+library(limma)
+library("colorspace")
+library(ggplot2)
+library(dplyr)
+library(scales)
+```
+
+```{r}
+col <- c("#6b8150", "#2273C3","#EFC144","#868686")
+col_border <- darken(col, 0.5)
+```
+
+```{r}
+cluster <- read.csv("processing/cluster_SNF_3_omics_3_clusters_plusHC.csv")
+cluster$X <- NULL
+names(cluster)[2] <- "X"
+```
+
+```{r}
+data_lip <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/lipidomics_log2_plusHC.csv", check.names = FALSE, row.names = NULL)
+data_lip$cluster <- factor(data_lip$cluster, levels = c("Ctrl", 1, 2, 3))
+data_met <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/metabolomics_log2_plusHC.csv", check.names = FALSE)
+data_met$cluster <- factor(data_met$cluster, levels = c("Ctrl", 1, 2, 3))
+```
+
+```{r}
+mic <- read.csv("processing/relative_abundance_table.csv", row.names = 1)
+mic <- data.frame(t(mic))
+mic$X <- gsub("X","", rownames(mic))
+```
+
+```{r}
+c1 <- select(data_met, X, cluster)
+c2 <- select(data_lip, X, cluster)
+
+clustering <- merge(c1, cluster, by = "X")
+clustering <- merge(c2, clustering, by = "X")
+```
+
+
+## LIMMA metabolites
+```{r}
+pca_data_2 <- data_met
+```
+
+```{r}
+group <- as.factor(pca_data_2$cluster)
+design <- model.matrix( ~ 0 + group)
+design
+```
+
+```{r}
+fit <- lmFit(t(pca_data_2[,-c(1,2)]), design)
+```
+
+```{r}
+comp <- c("group1-groupCtrl", "group2-groupCtrl", "group3-groupCtrl", "group3-group1", "group2-group1", "group3-group2")
+```
+
+```{r}
+cont.matrix <- makeContrasts(Ctrl_C1 = comp[1],
+                             Ctrl_C2 = comp[2],
+                             Ctrl_C3 = comp[3],
+                             C3_C1 = comp[4],
+                             C2_C1 = comp[5],
+                             C2_C3 = comp[6],
+                             levels=design)
+fit.cont <- contrasts.fit(fit, cont.matrix)
+fit.cont <- eBayes(fit.cont)
+```
+
+```{r}
+top_table <- data.frame(BIOCHEMICAL = NA , logFC= NA , P.Value= NA , adj.P.Val= NA , Comp= NA )
+
+for (i in 1:length(comp)) {
+  top_table_1 <- topTable(fit.cont, coef=i, adjust="BH", n = Inf, sort.by = "P")
+  top_table_1$Comp <- comp[i]
+  top_table_1$BIOCHEMICAL <- rownames(top_table_1)
+  top_table_1 <- select(top_table_1, BIOCHEMICAL, logFC, P.Value, adj.P.Val, Comp)
+  write.table(top_table_1$BIOCHEMICAL[top_table_1$adj.P.Val < 0.1], paste0("processing/GSEA/met_", comp[i],".txt"), quote = FALSE, row.names = F)
+  top_table <- rbind(top_table, top_table_1)
+}
+
+top_table <- top_table[complete.cases(top_table),]
+path_table <- paste0("results/LIMMA_results_metabolites_with_HC.csv")
+
+print(path_table)
+write.csv(top_table, file =path_table)
+
+DF_top_table <-top_table[top_table$adj.P.Val < 0.1, ]
+
+path_results <- paste0("results/LIMMA_results_metabolites_with_HC_filt.csv")
+
+write.table(DF_top_table, file = path_results)
+```
+
+## make ven diagram 3 comp
+```{r}
+library(nVennR)
+
+a <- list(DF_top_table$BIOCHEMICAL[DF_top_table$Comp == "group2-group1"])
+b <- list(DF_top_table$BIOCHEMICAL[DF_top_table$Comp == "group3-group1"])
+c <- list(DF_top_table$BIOCHEMICAL[DF_top_table$Comp == "group3-group2"])
+```
+
+```{r}
+# Load library
+library(VennDiagram)
+ # Prepare a palette of 3 colors with R colorbrewer:
+library(RColorBrewer)
+myCol <- brewer.pal(3, "Pastel2")
+
+# Chart
+venn.diagram(x = list(a[[1]], b[[1]], c[[1]]), filename = "results/figures/ven_metabolome", category.names = c("SNF-2vsSNF-1" , "SNF-3vsSNF-1" , " SNF-3vsSNF-2"), fill = myCol, euler.d = TRUE,
+	cex = 1.5,
+	cat.cex = 0.8)
+```
+
+## LIMMA lipids
+```{r}
+pca_data_2 <- data_lip
+```
+
+```{r}
+group <- as.factor(pca_data_2$cluster)
+design <- model.matrix( ~ 0 + group)
+design
+```
+
+```{r}
+fit <- lmFit(t(pca_data_2[,-c(1,2)]), design)
+```
+
+```{r}
+design
+```
+
+```{r}
+comp <- c("group1-groupCtrl", "group2-groupCtrl", "group3-groupCtrl", "group3-group1", "group2-group1", "group3-group2")
+```
+
+```{r}
+cont.matrix <- makeContrasts(Ctrl_C1 = comp[1],
+                             Ctrl_C2 = comp[2],
+                             Ctrl_C3 = comp[3],
+                             C3_C1 = comp[4],
+                             C2_C1 = comp[5],
+                             C2_C3 = comp[6],
+                             levels=design)
+fit.cont <- contrasts.fit(fit, cont.matrix)
+fit.cont <- eBayes(fit.cont)
+```
+```{r}
+top_table <- data.frame(BIOCHEMICAL = NA , logFC= NA , P.Value= NA , adj.P.Val= NA , Comp= NA )
+
+for (i in 1:length(comp)) {
+  top_table_1 <- topTable(fit.cont, coef=i, adjust="BH", n = Inf, sort.by = "P")
+  top_table_1$Comp <- comp[i]
+  top_table_1$BIOCHEMICAL <- rownames(top_table_1)
+  top_table_1 <- select(top_table_1, BIOCHEMICAL, logFC, P.Value, adj.P.Val, Comp)
+  write.table(top_table_1$BIOCHEMICAL[top_table_1$adj.P.Val < 0.05], paste0("processing/GSEA/lip_", comp[i],".txt"), quote = FALSE, row.names = F)
+  top_table <- rbind(top_table, top_table_1)
+}
+
+top_table <- top_table[complete.cases(top_table),]
+path_table <- paste0("results/LIMMA_results_lipids_with_HC.csv")
+
+print(path_table)
+write.csv(top_table, file =path_table)
+
+DF_top_table <-top_table[top_table$adj.P.Val < 0.05, ]
+
+path_results <- paste0("results/LIMMA_results_lipids_with_HC_filt.csv")
+
+write.table(DF_top_table, file = path_results)
+```
+
+## make ven diagram 3 comp
+```{r}
+library(nVennR)
+
+a <- list(DF_top_table$BIOCHEMICAL[DF_top_table$Comp == "group1-groupCtrl"])
+b <- list(DF_top_table$BIOCHEMICAL[DF_top_table$Comp == "group2-groupCtrl"])
+c <- list(DF_top_table$BIOCHEMICAL[DF_top_table$Comp == "group3-groupCtrl"])
+```
+
+```{r}
+# Load library
+library(VennDiagram)
+ # Prepare a palette of 3 colors with R colorbrewer:
+library(RColorBrewer)
+myCol <- brewer.pal(3, "Pastel2")
+
+# Chart
+venn.diagram(x = list(a[[1]], b[[1]], c[[1]]), filename = "results/figures/ven_lipidome", category.names = c("Ctrl vs C1" , "Ctrl vs C2" , " Ctrl vs C3"), fill = myCol)
+```
+/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/lipids_pathways.csv
+/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/lipids_superpathways.csv
+/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/metabolites_pathways.csv
+
+
+
+```{r}
+table_item <- read.csv("results/LIMMA_results_metabolites_with_HC.csv")
+conv <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/biochemical_super_path.csv")
+input_bar <- merge(table_item, conv, by = "BIOCHEMICAL")
+input_bar_2 <- select(input_bar, SUPER.PATHWAY, Comp, adj.P.Val)
+input_bar_2 <- input_bar_2[input_bar_2$adj.P.Val < 0.1,]
+
+input_bar_2 <- select(input_bar_2, SUPER.PATHWAY, Comp)
+input_bar <- select(input_bar, SUPER.PATHWAY, Comp)
+
+d3 <- data.frame(table(input_bar))
+names(d3)[c(1,3)] <-c("Category", "count")
+d3 <- d3[d3$count != 0,]
+d3 <- d3[unique(d3$Category),]
+d3$Comp <- "Total"
+d3$fraction <- d3$count/sum(d3$count)
+d3$N <- sum(d3$count)
+
+d4 <- data.frame(table(input_bar_2))
+names(d4)[c(1,3)] <-c("Category", "count")
+d4 <- d4[d4$count != 0,]
+
+```
+
+```{r}
+d4$fraction <- NA
+d4$N <- NA
+for (comp in unique(d4$Comp)) {
+  d4$fraction[which(d4$Comp == comp)] <- d4$count[which(d4$Comp == comp)]/sum(d4$count[which(d4$Comp == comp)])
+  d4$N[which(d4$Comp == comp)] <- sum(d4$count[which(d4$Comp == comp)])
+  print(comp)
+  
+}
+```
+```{r}
+names(d3)
+```
+```{r}
+names(d4)
+```
+```{r}
+d5 <- rbind(d3, d4)
+```
+
+```{r}
+d5$Group <- paste0(d5$Comp, ", N=",d5$N)
+d5$Group <- factor(d5$Group, levels = rev(c(unique(d5$Group)[grep("Total", unique(d5$Group))],
+                                        unique(d5$Group)[grep("group1-groupCtrl", unique(d5$Group))],
+                                        unique(d5$Group)[grep("group2-groupCtrl", unique(d5$Group))],
+                                        unique(d5$Group)[grep("group3-groupCtrl", unique(d5$Group))],
+                                        unique(d5$Group)[grep("group2-group1", unique(d5$Group))],
+                                        unique(d5$Group)[grep("group3-group1", unique(d5$Group))],
+                                        unique(d5$Group)[grep("group3-group2", unique(d5$Group))]
+                                        )))
+```
+
+```{r}
+mycols_met <- c("#34558b", "#f0daa4", "#eaac9d", "#798fa8", "#fd823e", "#117893", "#d13b40", "#ffaf12", "#a2553a")
+
+ggplot(d5, aes(fill=Category, y=fraction, x=Group))+ 
+    geom_bar(stat="identity", alpha = 1, width = .7, colour="white", lwd=0.1) +
+  labs(x="Comparison",y="Comorbidities frequency")+
+    scale_fill_manual(values = rev(mycols_met))+
+  geom_text(aes(label=ifelse(fraction >= 0.07, paste0("n = ", count, ", \n", round(fraction*100, 0), "%"),"")), position=position_stack(vjust=0.5), colour="white")+
+  coord_flip() +
+  scale_y_continuous(labels = percent_format()) +
+  labs(y="", x="")
+
+ggsave(paste0("results/figures/barplot_comparisons_LIMMA_Metabolites.pdf"), width = 15, height = 8)
+```
+
+```{r}
+library(RColorBrewer)
+mycols_lip <- c(brewer.pal(name="Dark2", n = 8), brewer.pal(name="Paired", n = 6))
+```
+
+/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/lipids_pathways.csv
+
+/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/metabolites_pathways.csv
+
+
+
+```{r}
+table_item <- read.csv("results/LIMMA_results_lipids_with_HC.csv")
+conv <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/lipids_superpathways.csv")
+input_bar <- merge(table_item, conv, by = "BIOCHEMICAL")
+input_bar_2 <- select(input_bar, SUPER_PATHWAY, Comp, adj.P.Val)
+input_bar_2 <- input_bar_2[input_bar_2$adj.P.Val < 0.05,]
+
+input_bar_2 <- select(input_bar_2, SUPER_PATHWAY, Comp)
+input_bar <- select(input_bar, SUPER_PATHWAY, Comp)
+
+d3 <- data.frame(table(input_bar))
+names(d3)[c(1,3)] <-c("Category", "count")
+d3 <- d3[d3$count != 0,]
+d3 <- d3[unique(d3$Category),]
+d3$Comp <- "Total"
+d3$fraction <- d3$count/sum(d3$count)
+d3$N <- sum(d3$count)
+
+d4 <- data.frame(table(input_bar_2))
+names(d4)[c(1,3)] <-c("Category", "count")
+d4 <- d4[d3$count != 0,]
+
+```
+
+```{r}
+d4$fraction <- NA
+d4$N <- NA
+for (comp in unique(d4$Comp)) {
+  d4$fraction[which(d4$Comp == comp)] <- d4$count[which(d4$Comp == comp)]/sum(d4$count[which(d4$Comp == comp)])
+  d4$N[which(d4$Comp == comp)] <- sum(d4$count[which(d4$Comp == comp)])
+  print(comp)
+  
+}
+```
+```{r}
+names(d3)
+```
+```{r}
+names(d4)
+```
+```{r}
+d5 <- rbind(d3, d4)
+```
+
+```{r}
+d5$Group <- paste0(d5$Comp, ", N=",d5$N)
+d5$Group <- factor(d5$Group, levels = rev(c(unique(d5$Group)[grep("Total", unique(d5$Group))],
+                                        unique(d5$Group)[grep("group1-groupCtrl", unique(d5$Group))],
+                                        unique(d5$Group)[grep("group2-groupCtrl", unique(d5$Group))],
+                                        unique(d5$Group)[grep("group3-groupCtrl", unique(d5$Group))],
+                                        unique(d5$Group)[grep("group2-group1", unique(d5$Group))],
+                                        unique(d5$Group)[grep("group3-group1", unique(d5$Group))],
+                                        unique(d5$Group)[grep("group3-group2", unique(d5$Group))]
+                                        )))
+```
+
+```{r}
+mycols_met <- c("#34558b", "#f0daa4", "#eaac9d", "#798fa8", "#fd823e", "#117893", "#d13b40", "#ffaf12", "#a2553a")
+
+ggplot(d5, aes(fill=Category, y=fraction, x=Group))+ 
+    geom_bar(stat="identity", alpha = 1, width = .7, colour="white", lwd=0.1) +
+  labs(x="Comparison",y="Comorbidities frequency")+
+    scale_fill_manual(values = rev(mycols_lip))+
+  geom_text(aes(label=ifelse(fraction >= 0.07, paste0("n = ", count, ", \n", round(fraction*100, 0), "%"),"")), position=position_stack(vjust=0.5), colour="white")+
+  coord_flip() +
+  scale_y_continuous(labels = percent_format()) +
+  labs(y="", x="")
+
+ggsave(paste0("results/figures/barplot_comparisons_LIMMA_Lipids.pdf"), width = 15, height = 8)
+```
+
