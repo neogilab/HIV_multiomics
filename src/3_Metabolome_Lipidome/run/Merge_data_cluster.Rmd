@@ -1,0 +1,58 @@
+---
+title: "Import data, merge to clusters and log transform"
+output: html_notebook
+---
+
+NB run after /home/flomik/Desktop/Code-PHD/Git/HIV_multiomics/src/3_Metabolome_Lipidome/run/Boxplot_lipid_classes.Rmd
+
+### enter your path to folder
+```{r}
+path <- "/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics"
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath(path)) 
+```
+
+
+## load clusters
+```{r}
+cluster <- read.csv("processing/cluster_SNF_3_omics_3_clusters_plusHC.csv")
+cluster$X <- NULL
+names(cluster)[2] <- "X"
+cluster <- cluster[!is.na(cluster$cluster),]
+```
+
+## log transform data metabolomics
+```{r}
+data_met <- read.csv("data/cocomo_norm_data_filt.csv")
+data_met <- data_met[data_met$SUPER.PATHWAY !="",]
+data_met <- data_met[,c(1,13:232)]
+names(data_met)[-1] <- gsub("X", "", names(data_met)[-1])
+data <- data.frame(t(data_met[,-1]))
+colnames(data) <- data_met$BIOCHEMICAL
+data <- log2(data)
+data <- data[,sapply(data, var) >= 0.3]
+data$X <- rownames(data)
+data <- merge(cluster, data, by = "X")
+write.csv(data, "processing/metabolomics_log2_plusHC.csv", row.names = FALSE)
+```
+
+## log transform data lipidomics
+```{r}
+data <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/data/clp_um_new_data.csv", header = TRUE, check.names=FALSE)
+names(data)[1] <- "X"
+condition <- data$Group
+#data$Group <- NULL
+
+data <- merge(cluster, data, by = "X", all.y = TRUE)
+data$X <- NULL
+data$Group <- NULL
+data <- data[!is.na(data$cluster),]
+data$cluster <- factor(data$cluster, levels = c("Ctrl", 1, 2, 3))
+
+data[,-1] <- log2(data[,-1])
+
+write.csv(data, "processing/lipidomics_log2_plusHC.csv", row.names = FALSE)
+```

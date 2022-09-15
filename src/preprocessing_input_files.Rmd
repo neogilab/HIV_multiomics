@@ -21,17 +21,32 @@ library(xlsx)
 ```
 
 /home/flomik/Desktop/Code-PHD/Git/HIV_multiomics/data/data_base_200_patients_COCOMO_filtered.xlsx
-/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics/data/Original_Scale_Data_CLP.xlsx
+
 /home/flomik/Desktop/Code-PHD/Git/HIV_multiomics/data/Supplementary Data 1.xlsx
 
-## Lipidomics
-```{r}
 
+/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics/data/cocomo_norm_data_filt.csv
+/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics/data/clp_lipidomics_data.csv
+
+## Lipidomics_
+```{r}
+#data_lip <- read.xlsx("/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics/data/Original_Scale_Data_CLP.xlsx", 1)
+data_lip <- read.csv("data/clp_lipidomics_data.csv")
+
+lip_sup_pathways <- data_lip[,c(1, 2)]
+write.csv(lip_sup_pathways, "processing/lipids_superpathways.csv", row.names = FALSE, quote = FALSE)
 ```
 
 ## Metabolomics
 ```{r}
+#data_met <- read.xlsx("/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics/data/Supplementary Data 1.xlsx", 1)
+data_met <- read.csv("data/cocomo_norm_data_filt.csv")
 
+met_sup_pathways <- data_met[,c(1, 2)]
+write.csv(met_sup_pathways, "processing/biochemical_super_path.csv", row.names = FALSE, quote = FALSE)
+
+met_sup_sub_pathways <- data_met[,c(1, 2, 3)]
+write.csv(met_sup_pathways, "processing/metabolites_pathways.csv", row.names = FALSE, quote = FALSE)
 ```
 
 ## Microbiome

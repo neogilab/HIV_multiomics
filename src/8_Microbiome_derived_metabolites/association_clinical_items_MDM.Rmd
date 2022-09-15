@@ -1,0 +1,111 @@
+---
+title: "correlation per group"
+output: html_notebook
+---
+
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+
+
+```{r}
+library(Hmisc)
+library(dplyr)
+library(xlsx)
+```
+
+
+```{r}
+data_met <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/metabolomics_log2_plusHC.csv", check.names = FALSE)
+data_met$cluster <- factor(data_met$cluster, levels = c("Ctrl", 1, 2, 3))
+
+mdm <- read.csv("processing/list_microbiome_derived_metabolites_heatmap_all_comparisons.csv")
+data_met <- data_met[,colnames(data_met) %in% c("X","cluster", mdm$Metabolite)]
+```
+
+## load metabolom-microbiome data
+```{r}
+data <- read.csv("processing/clinical_data_clean_for_regression_models.csv")
+data$X.1 <- NULL
+data$AGE <- as.numeric(data$AGE)
+data$Observed <- as.numeric(data$Observed)
+data$ob6 <- as.numeric(data$ob6)
+data$ob10 <- as.numeric(data$ob10)
+
+data$METS <- as.factor(data$METS)
+data$central_obesity <- as.factor(data$central_obesity)
+data$Ethnic <- as.factor(data$Ethnic)
+data$Origin <- as.factor(data$Origin)
+data$Transm_mode <- as.factor(data$Transm_mode)
+data$hypertension <- as.factor(data$hypertension)
+data$cluster <- as.factor(data$cluster)
+data$diabetes <- NULL
+data$X3rd_Drug <- NULL
+data$GENDER <- as.factor(data$GENDER)
+data$CD4_cat <- as.factor(data$CD4_cat)
+data$CD8_cat <- as.factor(data$CD8_cat)
+data$CD4_ART_cat <- as.factor(data$CD4_ART_cat)
+data$CD4_nadir_cat <- as.factor(data$CD4_nadir_cat)
+data$VL_ART_cat <- as.factor(data$VL_ART_cat)
+data$alcohol_cat <- as.factor(data$alcohol_cat)
+data$ob6_cat <- as.factor(data$ob6_cat)
+data$drug_1 <- as.factor(data$drug_1)
+data$drug_3 <- as.factor(data$drug_3)
+data$drug_bis <- as.factor(data$drug_bis)
+```
+
+
+```{r}
+data_met <- merge(data, data_met, by = "X")
+data_clinical <- data_met[,c(1:59)]
+data_met <- data_met[,-c(1:59)]
+```
+
+```{r}
+names(data_clinical)
+
+```
+
+
+```{r}
+r <- list()
+r2 <- list()
+plm <- as.data.frame(matrix(0,nrow=5,ncol=8))
+m = 1
+
+for (i in 2:ncol(data_clinical)) {
+  for (j in 1:ncol(data_met)) {
+    clinical <- data_clinical[,i]
+    met <- data_met[,j]
+    model <- lm(met ~ clinical, na.action=na.omit)
+    plm[m,1:4] <- coef(summary(model))[1,]
+    plm[m,5:6] <- confint(model)[1,]
+    plm[m,7] <- names(data_clinical)[i]
+    plm[m,8] <- names(data_met)[j]
+    m = m + 1
+    #h <- summary(model)$r.squared
+    #n <- summary(model)$adj.r.squared
+    #r[[j]] <- h
+    #r2[[j]] <- n
+  }
+}
+
+colnames(plm) <- c("Estimate","StdError","tStat","pvalue", "CI_Low", "CI_high", "clinical", "metabolite")
+
+plm$padjust <- p.adjust(plm$pvalue,method="BH")
+
+#plm$R2 <- r
+#plm$R2_adj <- r2
+sigplm <- plm[plm$padjust<0.05,] #look only at those with adjusted p.value < 0.05
+sigplm
+
+write.csv(plm, "results/results_regression_metabolome_mdm_clinical.csv")
+write.csv(sigplm, "results/results_regression_metabolome_mdm_clinical_filt.csv")
+
+unique(sigplm$clinical)
+```
+
+
+
