@@ -1,0 +1,282 @@
+---
+title: "Figures Microbiome"
+output: html_notebook
+---
+
+
+### enter your path to folder
+```{r}
+path <- "/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics"
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath(path)) 
+```
+
+
+```{r}
+library(dplyr)
+```
+
+```{r}
+library(phyloseq)
+library("ggplot2")
+library("scales")
+library("grid")
+library(xlsx)
+library("colorspace")
+library(vegan)
+library(reshape2)
+```
+
+
+
+```{r}
+col <- c("#6b8150", "#2273C3","#EFC144","#868686")
+col_border <- darken(col, 0.5)
+```
+
+```{r}
+cluster <- read.csv("processing/cluster_SNF_3_omics_3_clusters_plusHC.csv")
+cluster$X <- NULL
+names(cluster)[2] <- "X"
+```
+
+```{r}
+clinical <- read.csv("processing/clinical_data_microbiome_project.csv")
+clinical <- select(clinical, X, Transm_mode, METS, hypertension, central_obesity)
+cluster <- merge(clinical, cluster, by = "X", all.x = TRUE)
+```
+
+
+```{r}
+carbom <- readRDS("processing/model_phyloseq_no_filter.rds")
+carbom
+```
+## calculate Beta diversity
+
+```{r}
+set.seed(1)
+
+# Ordinate
+erie_nmds <- ordinate(
+  physeq = carbom, 
+  method = "NMDS", 
+  distance = "bray"
+)
+```
+
+```{r}
+a <- data.frame(scores(erie_nmds, choices=c(1)))
+a$X <- rownames(a)
+a <- merge(cluster, a, by = "X")
+a <- a[order(a$NMDS1),]
+a$axis <- 1
+a$cluster <- as.factor(a$cluster)
+a$Transm_mode <- as.factor(a$Transm_mode)
+a$METS <- as.factor(a$METS)
+a$hypertension <- as.factor(a$hypertension)
+a$central_obesity <- as.factor(a$central_obesity)
+
+```
+
+```{r}
+plot_ordination(
+  physeq = carbom,
+  ordination = erie_nmds,
+  color = "cluster",
+  title = "NMDS of HIV-specific clusters"
+) + 
+  scale_color_manual(values = c(col[2:4], col[1])
+  )+ 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          legend.position="bottom",
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)))+geom_point(size = 6, shape = 19)+
+  stat_ellipse()
+
+ggsave("results/microbiome/NMDS_microbiome_3_clusters_HC.pdf", height = 6, width = 6)
+```
+
+```{r}
+plot_ordination(
+  physeq = carbom,
+  ordination = erie_nmds,
+  color = "BMI_cat",
+  title = "NMDS of HIV-specific clusters")+ 
+  scale_color_manual(values = c("blue","red", "green", "orange", "pink")) + 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          legend.position="bottom",
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)))+geom_point(size = 6, shape = 19)+
+  stat_ellipse()
+
+ggsave("results/microbiome/NMDS_microbiome_BMI.pdf", height = 6, width = 6)
+```
+
+
+```{r}
+plot_ordination(
+  physeq = carbom,
+  ordination = erie_nmds,
+  color = "hypertension",
+  title = "NMDS of HIV-specific clusters")+ 
+  scale_color_manual(values = c("blue","red")) + 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          legend.position="bottom",
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)))+geom_point(size = 6, shape = 19)+
+  stat_ellipse()
+
+ggsave("results/microbiome/NMDS_microbiome_hypertension.pdf", height = 6, width = 6)
+```
+
+```{r}
+plot_ordination(
+  physeq = carbom,
+  ordination = erie_nmds,
+  color = "METS",
+  title = "NMDS of HIV-specific clusters")+ 
+  scale_color_manual(values = c("blue","red")) + 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          legend.position="bottom",
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)))+geom_point(size = 6, shape = 19)+
+  stat_ellipse()
+
+ggsave("results/microbiome/NMDS_microbiome_METS.pdf", height = 6, width = 6)
+```
+
+```{r}
+plot_ordination(
+  physeq = carbom,
+  ordination = erie_nmds,
+  color = "central_obesity",
+  title = "NMDS of HIV-specific clusters")+ 
+  scale_color_manual(values = c("blue","red")) + 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          legend.position="bottom",
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)))+geom_point(size = 6, shape = 19)+
+  stat_ellipse()
+
+ggsave("results/microbiome/NMDS_microbiome_central_obesity.pdf", height = 6, width = 6)
+```
+
+
+```{r}
+plot_ordination(
+  physeq = carbom,
+  ordination = erie_nmds,
+  color = "Transm_mode",
+  title = "NMDS of HIV-specific clusters")+ 
+  scale_color_manual(values = c("green","blue","red", "purple")) + 
+    theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          legend.position="bottom",
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)))+geom_point(size = 6, shape = 19)+
+  stat_ellipse()
+
+ggsave("results/microbiome/NMDS_microbiome_transmission_mode.pdf", height = 6, width = 6)
+```
+
+## correlation OTU clinical parameters
+```{r}
+table_microbiome <- read.csv("processing/relative_abundance_table.csv")
+table_microbiome_2 <- data.frame(t(table_microbiome[,-1]))
+colnames(table_microbiome_2) <- table_microbiome$X
+table_microbiome_2$X <- gsub("X", "", colnames(table_microbiome)[-1])
+
+```
+
+```{r}
+clinical_data <- read.csv("processing/clinical_ordered_microbiome_project.csv")
+table_microbiome_3 <- merge(clinical_data, table_microbiome_2, by = "X")
+```
+
+```{r}
+plm_tot <- as.data.frame(matrix(0,0,ncol=7))
+colnames(plm_tot) <- c("feature1", "feature2", "Estimate","StdError","tStat","pvalue", "padjust")
+
+for(i in 2:36){ #scdat is my data frame with each column a metabolite
+  plm <- as.data.frame(matrix(0,nrow=nrow(table_microbiome),ncol=6))
+  m = 1
+  colnames(plm) <- c("X", "Clinical", "Estimate","StdError","tStat","pvalue")
+  for (j in 37:277) {
+    reg <- lm(table_microbiome_3[,j] ~ table_microbiome_3[,i])
+    plm[m, 1] <- colnames(table_microbiome_3)[j]
+    plm[m, 2] <- colnames(table_microbiome_3)[i]
+    plm[m,3:6] <- coef(summary(reg))[2,]
+    m = m +1
+  }
+  plm$padjust <- p.adjust(plm$pvalue,method="BH")
+  sigplm <- plm[plm$padjust<0.05,] #look only at those with adjusted p.value < 0.05
+  sigplm <- sigplm[!is.na(sigplm$pvalue),]
+  plm_tot =rbind(plm_tot, sigplm)
+}
+```
+
+
+```{r}
+taxa <- read.csv("processing/tax_table_COCOMO.csv")
+plm_tot_2 <- merge(taxa, plm_tot, by = "X")
+```
+
+```{r}
+write.xlsx(plm_tot_2, "results/microbiome/association_otu_clinical_parameters.xlsx")
+```

@@ -34,8 +34,9 @@ library(ggplot2)
 library(ComplexHeatmap)
 ```
 
+## clinical data
 ```{r}
-clinical_data <- read.csv("processing/table_clinical_data.csv")
+clinical_data <- read.csv("data/patients_microbiome_project.csv")
 ```
 
 ## Load data
@@ -382,21 +383,6 @@ color_group[color_group == 3] <- "#F99F8A"
 ```
 
 ```{r}
-pdf("results/figures/Heatmap_lipids_cocomo_SNF_2.pdf", height = 4.5, width = 5)
-displayClusters2(W1,group, color_group)
-dev.off()
-pdf("results/figures/Heatmap_metabolites_cocomo_SNF_2.pdf", height = 4.5, width = 5)
-displayClusters2(W2,group, color_group)
-dev.off()
-pdf("results/figures/Heatmap_microbiome_cocomo_SNF_2.pdf", height = 4.5, width = 5)
-displayClusters2(W3,group, color_group)
-dev.off()
-pdf("results/figures/Heatmap_whole_cocomo_SNF_2.pdf", height = 4.5, width = 5)
-displayClusters2(W,group, color_group)
-dev.off()
-```
-
-```{r}
 displayClusters(W,group);
 #SNFNMI = Cal_NMI(group, truelabel)
 ConcordanceMatrix = Concordance_Network_NMI(list(W, W1,W2,W3));
@@ -440,53 +426,7 @@ ggplot(table_measures, aes(x=cluster)) +
   )
 ggsave("results/figures/test_SNF_selection_clusters.pdf")
 ```
-                                                                                                                                                                        
-##cluster_rows = FALSE, col = col, cluster_columns = FALSE
-```{r}
-col = colorRamp2(c(0, 0.0004, 0.002), c("white", "pink","red"))
-
-colnames(W1) <- NULL
-rownames(W1) <- NULL
-pdf("results/figures/Heatmap_lipids_cocomo_SNF.pdf", height = 4.5, width = 5)
-Heatmap(W1, col = col)
-dev.off()
-```
-```{r}
-col = colorRamp2(c(0.0001, 0.0003, 0.0004), c("white", "pink","red"))
-
-colnames(W2) <- NULL
-rownames(W2) <- NULL
-
-Heatmap(W2, col = col)
-pdf("results/figures/Heatmap_metabolome_cocomo_SNF.pdf", height = 4.5, width = 5)
-Heatmap(W2, col = col)
-dev.off()
-```
-```{r}
-col = colorRamp2(c(0.0001, 0.001, 0.0025), c("white", "pink","red"))
-
-colnames(W3) <- NULL
-rownames(W3) <- NULL
-
-Heatmap(W3, col)
-pdf("results/figures/Heatmap_microbiome_cocomo_SNF.pdf", height = 4.5, width = 5)
-Heatmap(W3, col = col)
-dev.off()
-```
-
-
-```{r}
-col = colorRamp2(c(0.008, 0.0098, 0.015), c("white", "pink","red"))
-
-colnames(W) <- NULL
-rownames(W) <- NULL
-
-Heatmap(W, col)
-pdf("results/figures/Heatmap_3_layers_cocomo_SNF.pdf", height = 4.5, width = 5)
-Heatmap(W, col = col)
-dev.off()
-```
-
+                                                                                                                                                
 ```{r}
 library(Matrix)
 colnames(W) <- colnames(Dist3)
@@ -498,41 +438,8 @@ W <- W[W$value > 0.011,]
 nrow(W)
 write.csv(W, "processing/SNF_3_cluster.csv")
 ```
-```{r}
-library(Matrix)
-W1 = affinityMatrix(Dist1, K, alpha)
-W1[lower.tri(W1)] <- 0 
-W1 <- melt(W1)
-W1 <- data.frame(W1[W1$Var1 != W1$Var2,])
-nrow(W1[W1$value > 0.00049,])
-W1 <- W1[W1$value > 0.00049,]
-write.csv(W1, "processing/SNF_3_cluster_W1.csv")
-```
-```{r}
-library(Matrix)
-W2 = affinityMatrix(Dist2, K, alpha)
-W2[lower.tri(W2)] <- 0 
-W2 <- melt(W2)
-W2 <- data.frame(W2[W2$Var1 != W2$Var2,])
-nrow(W2[W2$value > 0.0002419,])
-W2 <- W2[W2$value > 0.0002419,]
-write.csv(W2, "processing/SNF_3_cluster_W2.csv")
-```
-```{r}
-library(Matrix)
-W3 = affinityMatrix(Dist3, K, alpha)
-W3[lower.tri(W3)] <- 0 
-W3 <- melt(W3)
-W3 <- data.frame(W3[W3$Var1 != W3$Var2,])
-nrow(W3[W3$value > 0.00118,])
-W3 <- W3[W3$value > 0.00118,]
-write.csv(W3, "processing/SNF_3_cluster_W1.csv")
-```
 
 ```{r}
-names(W1)[3] <- "value_W1"
-names(W2)[3] <- "value_W2"
-names(W3)[3] <- "value_W3"
 names(W)[3] <- "value_W"
 ```
 
@@ -548,7 +455,7 @@ colnames(ConcordanceMatrix) = c("SNF", "lip", "met", "micro")
 
 ```{r}
 pdf("results/figures/NMI_matrix_selection_clusters_new_figure.pdf")
-col = colorRamp2(c(0.2, 0.4,1), c("white", "#cc495f","#7d2e3b"))
+col = colorRamp2(c(0.2, 0.4,1), c("white", "pink","red"))
 Heatmap(ConcordanceMatrix, cluster_rows = FALSE, col = col, cluster_columns = FALSE)
 dev.off()
 ```
