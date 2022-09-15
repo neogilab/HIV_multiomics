@@ -20,15 +20,7 @@ path <- "/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics"
 library(xlsx)
 ```
 
-/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics/data/data_base_200_patients_COCOMO_filtered.xlsx
-
-/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics/data/Supplementary Data 1.xlsx
-
-
-/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics/data/cocomo_norm_data_filt.csv
-/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics/data/clp_lipidomics_data.csv
-
-## Lipidomics_
+## Lipidomics
 ```{r}
 #data_lip <- read.xlsx("/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics/data/Original_Scale_Data_CLP.xlsx", 1)
 data_lip <- read.csv("data/clp_lipidomics_data.csv")
@@ -61,4 +53,14 @@ write.csv(data_family, "data/microbiome_COCOMO_family.csv")
 data_phylum <- read.xlsx("data/COCOMO-request.SHH.withfamilyandphylum.xlsx", 6)
 write.csv(data_phylum, "data/microbiome_COCOMO_phylum.csv")
 ```
+## Clinical
+```{r}
+a <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/table_clinical_data.csv")
+```
 
+
+
+
+"data/clinical_data_of_interest_microbiome_project.csv"
+"clinical_ordered_microbiome_project.csv"
+table_clinical_data.csv

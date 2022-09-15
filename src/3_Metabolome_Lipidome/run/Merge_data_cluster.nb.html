@@ -257,7 +257,7 @@ cluster &lt;- cluster[!is.na(cluster$cluster),]</code></pre>
 <h2>log transform data metabolomics</h2>
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuZGF0YV9tZXQgPC0gcmVhZC5jc3YoXCJkYXRhL2NvY29tb19ub3JtX2RhdGFfZmlsdC5jc3ZcIilcbmRhdGFfbWV0IDwtIGRhdGFfbWV0W2RhdGFfbWV0JFNVUEVSLlBBVEhXQVkgIT1cIlwiLF1cbmRhdGFfbWV0IDwtIGRhdGFfbWV0WyxjKDEsMTM6MjMyKV1cbm5hbWVzKGRhdGFfbWV0KVstMV0gPC0gZ3N1YihcIlhcIiwgXCJcIiwgbmFtZXMoZGF0YV9tZXQpWy0xXSlcbmRhdGEgPC0gZGF0YS5mcmFtZSh0KGRhdGFfbWV0WywtMV0pKVxuY29sbmFtZXMoZGF0YSkgPC0gZGF0YV9tZXQkQklPQ0hFTUlDQUxcbmRhdGEgPC0gbG9nMihkYXRhKVxuZGF0YSA8LSBkYXRhWyxzYXBwbHkoZGF0YSwgdmFyKSA+PSAwLjNdXG5kYXRhJFggPC0gcm93bmFtZXMoZGF0YSlcbmRhdGEgPC0gbWVyZ2UoY2x1c3RlciwgZGF0YSwgYnkgPSBcIlhcIilcbndyaXRlLmNzdihkYXRhLCBcInByb2Nlc3NpbmcvbWV0YWJvbG9taWNzX2xvZzJfcGx1c0hDLmNzdlwiLCByb3cubmFtZXMgPSBGQUxTRSlcbmBgYCJ9 -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuZGF0YV9tZXQgPC0gcmVhZC5jc3YoXCJkYXRhL2NvY29tb19ub3JtX2RhdGFfZmlsdC5jc3ZcIilcbmRhdGFfbWV0IDwtIGRhdGFfbWV0W2RhdGFfbWV0JFNVUEVSLlBBVEhXQVkgIT1cIlwiLF1cbmRhdGFfbWV0IDwtIGRhdGFfbWV0WyxjKDEsMTM6MjMyKV1cbm5hbWVzKGRhdGFfbWV0KVstMV0gPC0gZ3N1YihcIlhcIiwgXCJcIiwgbmFtZXMoZGF0YV9tZXQpWy0xXSlcbmRhdGEgPC0gZGF0YS5mcmFtZSh0KGRhdGFfbWV0WywtMV0pKVxuY29sbmFtZXMoZGF0YSkgPC0gZGF0YV9tZXQkQklPQ0hFTUlDQUxcbmRhdGEgPC0gbG9nMihkYXRhKVxuZGF0YSA8LSBkYXRhWyxzYXBwbHkoZGF0YSwgdmFyKSA+PSAwLjNdXG5kYXRhJFggPC0gcm93bmFtZXMoZGF0YSlcbmRhdGEgPC0gbWVyZ2UoY2x1c3RlciwgZGF0YSwgYnkgPSBcIlhcIilcbndyaXRlLmNzdihkYXRhLCBcInByb2Nlc3NpbmcvbWV0YWJvbG9taWNzX2xvZzJfcGx1c0hDLmNzdlwiKVxuYGBgIn0= -->
 <pre class="r"><code>data_met &lt;- read.csv(&quot;data/cocomo_norm_data_filt.csv&quot;)
 data_met &lt;- data_met[data_met$SUPER.PATHWAY !=&quot;&quot;,]
 data_met &lt;- data_met[,c(1,13:232)]
@@ -268,35 +268,68 @@ data &lt;- log2(data)
 data &lt;- data[,sapply(data, var) &gt;= 0.3]
 data$X &lt;- rownames(data)
 data &lt;- merge(cluster, data, by = &quot;X&quot;)
-write.csv(data, &quot;processing/metabolomics_log2_plusHC.csv&quot;, row.names = FALSE)</code></pre>
+write.csv(data, &quot;processing/metabolomics_log2_plusHC.csv&quot;)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuZGF0YV9saXAgPC0gcmVhZC5jc3YoXCIvaG9tZS9mbG9taWsvRG93bmxvYWRzLzNfbGF5ZXJzX2ludGVncmF0aW9uLW1haW4vZGF0YS9jbHBfbGlwaWRvbWljc19kYXRhLmNzdlwiKVxuZGF0YV9saXAgPC0gZGF0YV9saXBbZGF0YV9saXAkU1VQRVJfUEFUSFdBWSAhPVwiXCIsXVxuZGF0YV9saXAgPC0gZGF0YV9saXBbLGMoMSwgOToyMjgpXVxubmFtZXMoZGF0YV9saXApIDwtIGdzdWIoXCJYXCIsIFwiXCIsIG5hbWVzKGRhdGFfbGlwKSlcblxuZGF0YV9saXBfMiA8LSBkYXRhLmZyYW1lKHQoZGF0YV9saXBbLC0xXSkpXG5jb2xuYW1lcyhkYXRhX2xpcF8yKSA8LSBkYXRhX2xpcCRCSU9DSEVNSUNBTFxuXG5kYXRhX2xpcF8yIDwtIGxvZzIoZGF0YV9saXBfMilcbmRhdGFfbGlwXzIgPC0gZGF0YV9saXBfMlssc2FwcGx5KGRhdGFfbGlwXzIsIHZhcikgPj0gMC4zXVxuZGF0YV9saXBfMiRYIDwtIHJvd25hbWVzKGRhdGFfbGlwXzIpXG5kYXRhX2xpcF8yIDwtIG1lcmdlKGNsdXN0ZXIsIGRhdGFfbGlwXzIsIGJ5ID0gXCJYXCIpXG53cml0ZS5jc3YoZGF0YV9saXBfMiwgXCJwcm9jZXNzaW5nL2xpcGlkb21pY3NfbG9nMl9wbHVzSEMuY3N2XCIpXG5gYGAifQ== -->
+<pre class="r"><code>data_lip &lt;- read.csv(&quot;/home/flomik/Downloads/3_layers_integration-main/data/clp_lipidomics_data.csv&quot;)
+data_lip &lt;- data_lip[data_lip$SUPER_PATHWAY !=&quot;&quot;,]
+data_lip &lt;- data_lip[,c(1, 9:228)]
+names(data_lip) &lt;- gsub(&quot;X&quot;, &quot;&quot;, names(data_lip))
+
+data_lip_2 &lt;- data.frame(t(data_lip[,-1]))
+colnames(data_lip_2) &lt;- data_lip$BIOCHEMICAL
+
+data_lip_2 &lt;- log2(data_lip_2)
+data_lip_2 &lt;- data_lip_2[,sapply(data_lip_2, var) &gt;= 0.3]
+data_lip_2$X &lt;- rownames(data_lip_2)
+data_lip_2 &lt;- merge(cluster, data_lip_2, by = &quot;X&quot;)
+write.csv(data_lip_2, &quot;processing/lipidomics_log2_plusHC.csv&quot;)</code></pre>
 <!-- rnb-source-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
 </div>
-<div id="log-transform-data-lipidomics" class="section level2">
-<h2>log transform data lipidomics</h2>
+<div id="clinical-data" class="section level2">
+<h2>clinical data</h2>
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuZGF0YSA8LSByZWFkLmNzdihcIi9ob21lL2Zsb21pay9EZXNrdG9wL0NvZGUtUEhELzNfbGF5ZXJzX2ludGVncmF0aW9uL2RhdGEvY2xwX3VtX25ld19kYXRhLmNzdlwiLCBoZWFkZXIgPSBUUlVFLCBjaGVjay5uYW1lcz1GQUxTRSlcbm5hbWVzKGRhdGEpWzFdIDwtIFwiWFwiXG5jb25kaXRpb24gPC0gZGF0YSRHcm91cFxuI2RhdGEkR3JvdXAgPC0gTlVMTFxuXG5kYXRhIDwtIG1lcmdlKGNsdXN0ZXIsIGRhdGEsIGJ5ID0gXCJYXCIsIGFsbC55ID0gVFJVRSlcbmRhdGEkWCA8LSBOVUxMXG5kYXRhJEdyb3VwIDwtIE5VTExcbmRhdGEgPC0gZGF0YVshaXMubmEoZGF0YSRjbHVzdGVyKSxdXG5kYXRhJGNsdXN0ZXIgPC0gZmFjdG9yKGRhdGEkY2x1c3RlciwgbGV2ZWxzID0gYyhcIkN0cmxcIiwgMSwgMiwgMykpXG5cbmRhdGFbLC0xXSA8LSBsb2cyKGRhdGFbLC0xXSlcblxud3JpdGUuY3N2KGRhdGEsIFwicHJvY2Vzc2luZy9saXBpZG9taWNzX2xvZzJfcGx1c0hDLmNzdlwiLCByb3cubmFtZXMgPSBGQUxTRSlcbmBgYCJ9 -->
-<pre class="r"><code>data &lt;- read.csv(&quot;/home/flomik/Desktop/Code-PHD/3_layers_integration/data/clp_um_new_data.csv&quot;, header = TRUE, check.names=FALSE)
-names(data)[1] &lt;- &quot;X&quot;
-condition &lt;- data$Group
-#data$Group &lt;- NULL
-
-data &lt;- merge(cluster, data, by = &quot;X&quot;, all.y = TRUE)
-data$X &lt;- NULL
-data$Group &lt;- NULL
-data &lt;- data[!is.na(data$cluster),]
-data$cluster &lt;- factor(data$cluster, levels = c(&quot;Ctrl&quot;, 1, 2, 3))
-
-data[,-1] &lt;- log2(data[,-1])
-
-write.csv(data, &quot;processing/lipidomics_log2_plusHC.csv&quot;, row.names = FALSE)</code></pre>
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuY2xpbmljYWxfY29tcCA8LSByZWFkLmNzdihcImRhdGEvY2xpbmljYWxfY29tcC5jc3ZcIilcbmNsaW5pY2FsIDwtIHJlYWQueGxzeChcImRhdGEvZGF0YV9iYXNlXzIwMF9wYXRpZW50c19DT0NPTU9fZmlsdGVyZWQueGxzeFwiLCAxKVxuYGBgIn0= -->
+<pre class="r"><code>clinical_comp &lt;- read.csv(&quot;data/clinical_comp.csv&quot;)
+clinical &lt;- read.xlsx(&quot;data/data_base_200_patients_COCOMO_filtered.xlsx&quot;, 1)</code></pre>
 <!-- rnb-source-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxubmFtZXMoZGF0YSlbMV1cblxuYGBgIn0= -->
+<pre class="r"><code>names(data)[1]
+</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiWzFdIFwiWFwiXG4ifQ== -->
+<pre><code>[1] &quot;X&quot;</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxubmFtZXMoZGF0YSlcbmBgYCJ9 -->
+<pre class="r"><code>names(data)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
 <!-- rnb-chunk-end -->
 </div>
 
-<div id="rmd-source-code">LS0tCnRpdGxlOiAiSW1wb3J0IGRhdGEsIG1lcmdlIHRvIGNsdXN0ZXJzIGFuZCBsb2cgdHJhbnNmb3JtIgpvdXRwdXQ6IGh0bWxfbm90ZWJvb2sKLS0tCgpOQiBydW4gYWZ0ZXIgL2hvbWUvZmxvbWlrL0Rlc2t0b3AvQ29kZS1QSEQvR2l0L0hJVl9tdWx0aW9taWNzL3NyYy8zX01ldGFib2xvbWVfTGlwaWRvbWUvcnVuL0JveHBsb3RfbGlwaWRfY2xhc3Nlcy5SbWQKCiMjIyBlbnRlciB5b3VyIHBhdGggdG8gZm9sZGVyCmBgYHtyfQpwYXRoIDwtICIvaG9tZS9mbG9taWsvRGVza3RvcC9Db2RlLVBIRC9HaXQvSElWX211bHRpb21pY3MiCmBgYAoKIyMjIHNldCBkaXJlY3RvcnkKYGBge3Igc2V0dXB9CiAgICBrbml0cjo6b3B0c19rbml0JHNldChyb290LmRpciA9IG5vcm1hbGl6ZVBhdGgocGF0aCkpIApgYGAKCgojIyBsb2FkIGNsdXN0ZXJzCmBgYHtyfQpjbHVzdGVyIDwtIHJlYWQuY3N2KCJwcm9jZXNzaW5nL2NsdXN0ZXJfU05GXzNfb21pY3NfM19jbHVzdGVyc19wbHVzSEMuY3N2IikKY2x1c3RlciRYIDwtIE5VTEwKbmFtZXMoY2x1c3RlcilbMl0gPC0gIlgiCmNsdXN0ZXIgPC0gY2x1c3RlclshaXMubmEoY2x1c3RlciRjbHVzdGVyKSxdCmBgYAoKIyMgbG9nIHRyYW5zZm9ybSBkYXRhIG1ldGFib2xvbWljcwpgYGB7cn0KZGF0YV9tZXQgPC0gcmVhZC5jc3YoImRhdGEvY29jb21vX25vcm1fZGF0YV9maWx0LmNzdiIpCmRhdGFfbWV0IDwtIGRhdGFfbWV0W2RhdGFfbWV0JFNVUEVSLlBBVEhXQVkgIT0iIixdCmRhdGFfbWV0IDwtIGRhdGFfbWV0WyxjKDEsMTM6MjMyKV0KbmFtZXMoZGF0YV9tZXQpWy0xXSA8LSBnc3ViKCJYIiwgIiIsIG5hbWVzKGRhdGFfbWV0KVstMV0pCmRhdGEgPC0gZGF0YS5mcmFtZSh0KGRhdGFfbWV0WywtMV0pKQpjb2xuYW1lcyhkYXRhKSA8LSBkYXRhX21ldCRCSU9DSEVNSUNBTApkYXRhIDwtIGxvZzIoZGF0YSkKZGF0YSA8LSBkYXRhWyxzYXBwbHkoZGF0YSwgdmFyKSA+PSAwLjNdCmRhdGEkWCA8LSByb3duYW1lcyhkYXRhKQpkYXRhIDwtIG1lcmdlKGNsdXN0ZXIsIGRhdGEsIGJ5ID0gIlgiKQp3cml0ZS5jc3YoZGF0YSwgInByb2Nlc3NpbmcvbWV0YWJvbG9taWNzX2xvZzJfcGx1c0hDLmNzdiIsIHJvdy5uYW1lcyA9IEZBTFNFKQpgYGAKCiMjIGxvZyB0cmFuc2Zvcm0gZGF0YSBsaXBpZG9taWNzCmBgYHtyfQpkYXRhIDwtIHJlYWQuY3N2KCIvaG9tZS9mbG9taWsvRGVza3RvcC9Db2RlLVBIRC8zX2xheWVyc19pbnRlZ3JhdGlvbi9kYXRhL2NscF91bV9uZXdfZGF0YS5jc3YiLCBoZWFkZXIgPSBUUlVFLCBjaGVjay5uYW1lcz1GQUxTRSkKbmFtZXMoZGF0YSlbMV0gPC0gIlgiCmNvbmRpdGlvbiA8LSBkYXRhJEdyb3VwCiNkYXRhJEdyb3VwIDwtIE5VTEwKCmRhdGEgPC0gbWVyZ2UoY2x1c3RlciwgZGF0YSwgYnkgPSAiWCIsIGFsbC55ID0gVFJVRSkKZGF0YSRYIDwtIE5VTEwKZGF0YSRHcm91cCA8LSBOVUxMCmRhdGEgPC0gZGF0YVshaXMubmEoZGF0YSRjbHVzdGVyKSxdCmRhdGEkY2x1c3RlciA8LSBmYWN0b3IoZGF0YSRjbHVzdGVyLCBsZXZlbHMgPSBjKCJDdHJsIiwgMSwgMiwgMykpCgpkYXRhWywtMV0gPC0gbG9nMihkYXRhWywtMV0pCgp3cml0ZS5jc3YoZGF0YSwgInByb2Nlc3NpbmcvbGlwaWRvbWljc19sb2cyX3BsdXNIQy5jc3YiLCByb3cubmFtZXMgPSBGQUxTRSkKYGBgCg==</div>
+<div id="rmd-source-code">LS0tCnRpdGxlOiAiSW1wb3J0IGRhdGEsIG1lcmdlIHRvIGNsdXN0ZXJzIGFuZCBsb2cgdHJhbnNmb3JtIgpvdXRwdXQ6IGh0bWxfbm90ZWJvb2sKLS0tCgpOQiBydW4gYWZ0ZXIgL2hvbWUvZmxvbWlrL0Rlc2t0b3AvQ29kZS1QSEQvR2l0L0hJVl9tdWx0aW9taWNzL3NyYy8zX01ldGFib2xvbWVfTGlwaWRvbWUvcnVuL0JveHBsb3RfbGlwaWRfY2xhc3Nlcy5SbWQKCiMjIyBlbnRlciB5b3VyIHBhdGggdG8gZm9sZGVyCmBgYHtyfQpwYXRoIDwtICIvaG9tZS9mbG9taWsvRGVza3RvcC9Db2RlLVBIRC9HaXQvSElWX211bHRpb21pY3MiCmBgYAoKIyMjIHNldCBkaXJlY3RvcnkKYGBge3Igc2V0dXB9CiAgICBrbml0cjo6b3B0c19rbml0JHNldChyb290LmRpciA9IG5vcm1hbGl6ZVBhdGgocGF0aCkpIApgYGAKCgojIyBsb2FkIGNsdXN0ZXJzCmBgYHtyfQpjbHVzdGVyIDwtIHJlYWQuY3N2KCJwcm9jZXNzaW5nL2NsdXN0ZXJfU05GXzNfb21pY3NfM19jbHVzdGVyc19wbHVzSEMuY3N2IikKY2x1c3RlciRYIDwtIE5VTEwKbmFtZXMoY2x1c3RlcilbMl0gPC0gIlgiCmNsdXN0ZXIgPC0gY2x1c3RlclshaXMubmEoY2x1c3RlciRjbHVzdGVyKSxdCmBgYAoKIyMgbG9nIHRyYW5zZm9ybSBkYXRhIG1ldGFib2xvbWljcwpgYGB7cn0KZGF0YV9tZXQgPC0gcmVhZC5jc3YoImRhdGEvY29jb21vX25vcm1fZGF0YV9maWx0LmNzdiIpCmRhdGFfbWV0IDwtIGRhdGFfbWV0W2RhdGFfbWV0JFNVUEVSLlBBVEhXQVkgIT0iIixdCmRhdGFfbWV0IDwtIGRhdGFfbWV0WyxjKDEsMTM6MjMyKV0KbmFtZXMoZGF0YV9tZXQpWy0xXSA8LSBnc3ViKCJYIiwgIiIsIG5hbWVzKGRhdGFfbWV0KVstMV0pCmRhdGEgPC0gZGF0YS5mcmFtZSh0KGRhdGFfbWV0WywtMV0pKQpjb2xuYW1lcyhkYXRhKSA8LSBkYXRhX21ldCRCSU9DSEVNSUNBTApkYXRhIDwtIGxvZzIoZGF0YSkKZGF0YSA8LSBkYXRhWyxzYXBwbHkoZGF0YSwgdmFyKSA+PSAwLjNdCmRhdGEkWCA8LSByb3duYW1lcyhkYXRhKQpkYXRhIDwtIG1lcmdlKGNsdXN0ZXIsIGRhdGEsIGJ5ID0gIlgiKQp3cml0ZS5jc3YoZGF0YSwgInByb2Nlc3NpbmcvbWV0YWJvbG9taWNzX2xvZzJfcGx1c0hDLmNzdiIpCmBgYAoKYGBge3J9CmRhdGFfbGlwIDwtIHJlYWQuY3N2KCIvaG9tZS9mbG9taWsvRG93bmxvYWRzLzNfbGF5ZXJzX2ludGVncmF0aW9uLW1haW4vZGF0YS9jbHBfbGlwaWRvbWljc19kYXRhLmNzdiIpCmRhdGFfbGlwIDwtIGRhdGFfbGlwW2RhdGFfbGlwJFNVUEVSX1BBVEhXQVkgIT0iIixdCmRhdGFfbGlwIDwtIGRhdGFfbGlwWyxjKDEsIDk6MjI4KV0KbmFtZXMoZGF0YV9saXApIDwtIGdzdWIoIlgiLCAiIiwgbmFtZXMoZGF0YV9saXApKQoKZGF0YV9saXBfMiA8LSBkYXRhLmZyYW1lKHQoZGF0YV9saXBbLC0xXSkpCmNvbG5hbWVzKGRhdGFfbGlwXzIpIDwtIGRhdGFfbGlwJEJJT0NIRU1JQ0FMCgpkYXRhX2xpcF8yIDwtIGxvZzIoZGF0YV9saXBfMikKZGF0YV9saXBfMiA8LSBkYXRhX2xpcF8yWyxzYXBwbHkoZGF0YV9saXBfMiwgdmFyKSA+PSAwLjNdCmRhdGFfbGlwXzIkWCA8LSByb3duYW1lcyhkYXRhX2xpcF8yKQpkYXRhX2xpcF8yIDwtIG1lcmdlKGNsdXN0ZXIsIGRhdGFfbGlwXzIsIGJ5ID0gIlgiKQp3cml0ZS5jc3YoZGF0YV9saXBfMiwgInByb2Nlc3NpbmcvbGlwaWRvbWljc19sb2cyX3BsdXNIQy5jc3YiKQpgYGAKCgojIyBjbGluaWNhbCBkYXRhCmBgYHtyfQpjbGluaWNhbF9jb21wIDwtIHJlYWQuY3N2KCJkYXRhL2NsaW5pY2FsX2NvbXAuY3N2IikKY2xpbmljYWwgPC0gcmVhZC54bHN4KCJkYXRhL2RhdGFfYmFzZV8yMDBfcGF0aWVudHNfQ09DT01PX2ZpbHRlcmVkLnhsc3giLCAxKQpgYGAKCmBgYHtyfQpjbGluaWNhbCA8LSBtZXJnZShjbGluaWNhbCwgY2xpbmljYWxfY29tcCwgYnkgPSAiaWQiKQpyb3duYW1lcyhjbGluaWNhbCkgPC0gY2xpbmljYWwkaWQKY2xpbmljYWxfaW50ZXJlc3QgPC0gcmVhZC5jc3YoImRhdGEvY2xpbmljYWxfZGF0YV9vZl9pbnRlcmVzdF9taWNyb2Jpb21lX3Byb2plY3QuY3N2IikKY2xpbmljYWxfMiA8LSBjbGluaWNhbF9pbnRlcmVzdCRuYW1lX3RhYmxlWyFjbGluaWNhbF9pbnRlcmVzdCRuYW1lX3RhYmxlICVpbiUgY29sbmFtZXMoY2xpbmljYWwpXQpjbGluaWNhbCA8LSBjbGluaWNhbFssY29sbmFtZXMoY2xpbmljYWwpICVpbiUgY2xpbmljYWxfaW50ZXJlc3QkbmFtZV90YWJsZV0KY2xpbmljYWwkaWQgPC0gcm93bmFtZXMoY2xpbmljYWwpCndyaXRlLmNzdihjbGluaWNhbCwgcGFzdGUwKCJwcm9jZXNzaW5nL2NsaW5pY2FsX2RhdGFfIiwgbmFtZV9hbmEsICIuY3N2IikpCmBgYAoKYGBge3J9Cm5hbWVzKGRhdGEpWzFdIDwtICJpZCIKZGF0YSA8LSBtZXJnZShjbGluaWNhbCwgZGF0YSwgYnkgPSAiaWQiKQpgYGAKCmBgYHtyfQpuYW1lcyhkYXRhKQpgYGAKCmBgYHtyfQpyb3duYW1lcyhkYXRhKSA8LSBkYXRhJGlkCmNsaW5pY2FsIDwtIGRhdGFbLDI6MzZdCgp3cml0ZS5jc3YoY2xpbmljYWwsIHBhc3RlMCgicHJvY2Vzc2luZy9jbGluaWNhbF9vcmRlcmVkXyIsIG5hbWVfYW5hLCAiLmNzdiIpKQpgYGAK</div>
 
 
 

@@ -34,8 +34,9 @@ library(ggplot2)
 library(ComplexHeatmap)
 ```
 
+## clinical data
 ```{r}
-clinical_data <- read.csv("processing/table_clinical_data.csv")
+clinical_data <- read.csv("data/patients_microbiome_project.csv")
 ```
 
 ## Load data

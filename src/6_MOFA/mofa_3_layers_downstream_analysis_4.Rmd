@@ -206,28 +206,33 @@ dev.off()
 MOFAobject@cache
 ```
 ## Association factors / clinical parameters
-VAT : factors 1, 3, 13, 14
-Transmission mode : 7, 13
-hypertension : 15
 
-
-cluster, hypertension, Transm_mode, VAT, SAT, CD4, METS, AGE, BMI, first_drug, X3rd_Drug, GENDER
 ```{r}
 correlate_factors_with_covariates(MOFAobject, 
   covariates = c("cluster", "hypertension", "Transm_mode", "VAT", "SAT","CD4_CD8", "METS", "AGE", "BMI", "Combined_therapy", "GENDER", "X3rd_Drug"), 
   plot="log_pval"
 )
 
-pdf("results/figures/MOFA_covariate_association_model_4.pdf")
+x <- data.frame(correlate_factors_with_covariates(MOFAobject, 
+  covariates = c("cluster", "hypertension", "Transm_mode", "VAT", "SAT","CD4_CD8", "METS", "AGE", "BMI", "Combined_therapy", "GENDER", "X3rd_Drug"), 
+  return_data = TRUE))
+
+x$Factor <- rownames(x)
+
+x2 <- melt(x, id.vars = c("Factor"))
+x2 <- x2[x2$value != 0,]
+
+pdf("results/figures_2/MOFA_covariate_association_model_4.pdf")
 correlate_factors_with_covariates(MOFAobject, 
   covariates = c("cluster", "hypertension", "Transm_mode", "VAT", "SAT","CD4_CD8", "METS", "AGE", "BMI", "GENDER"), 
   plot="log_pval"
 )
 dev.off()
-```
-```{r}
 
+x2$value <- NULL
+write.csv(x2, "MOFA_correlation_clinical_parameters.csv", row.names = FALSE, quote = FALSE)
 ```
+
 
 ## relationship clinical data and latent factors
 ```{r}

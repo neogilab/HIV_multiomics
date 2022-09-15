@@ -20,6 +20,22 @@ library(dplyr)
 library(xlsx)
 ```
 
+## clinical data
+```{r}
+clinical_comp <- read.csv("data/clinical_comp.csv")
+clinical <- read.xlsx("data/data_base_200_patients_COCOMO_filtered.xlsx", 1)
+```
+
+```{r}
+clinical <- merge(clinical, clinical_comp, by = "id")
+rownames(clinical) <- clinical$id
+clinical_interest <- read.csv("data/clinical_data_of_interest_microbiome_project.csv")
+clinical_2 <- clinical_interest$name_table[!clinical_interest$name_table %in% colnames(clinical)]
+clinical <- clinical[,colnames(clinical) %in% clinical_interest$name_table]
+clinical$id <- rownames(clinical)
+write.csv(clinical, paste0("processing/clinical_data_", name_ana, ".csv"))
+```
+
 
 ```{r}
 dur <- read.csv("processing/duration_ART_COCOMO_3.csv")

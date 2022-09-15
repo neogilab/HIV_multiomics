@@ -36,23 +36,54 @@ data <- log2(data)
 data <- data[,sapply(data, var) >= 0.3]
 data$X <- rownames(data)
 data <- merge(cluster, data, by = "X")
-write.csv(data, "processing/metabolomics_log2_plusHC.csv", row.names = FALSE)
+write.csv(data, "processing/metabolomics_log2_plusHC.csv")
 ```
 
-## log transform data lipidomics
 ```{r}
-data <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/data/clp_um_new_data.csv", header = TRUE, check.names=FALSE)
-names(data)[1] <- "X"
-condition <- data$Group
-#data$Group <- NULL
+data_lip <- read.csv("/home/flomik/Downloads/3_layers_integration-main/data/clp_lipidomics_data.csv")
+data_lip <- data_lip[data_lip$SUPER_PATHWAY !="",]
+data_lip <- data_lip[,c(1, 9:228)]
+names(data_lip) <- gsub("X", "", names(data_lip))
 
-data <- merge(cluster, data, by = "X", all.y = TRUE)
-data$X <- NULL
-data$Group <- NULL
-data <- data[!is.na(data$cluster),]
-data$cluster <- factor(data$cluster, levels = c("Ctrl", 1, 2, 3))
+data_lip_2 <- data.frame(t(data_lip[,-1]))
+colnames(data_lip_2) <- data_lip$BIOCHEMICAL
 
-data[,-1] <- log2(data[,-1])
+data_lip_2 <- log2(data_lip_2)
+data_lip_2 <- data_lip_2[,sapply(data_lip_2, var) >= 0.3]
+data_lip_2$X <- rownames(data_lip_2)
+data_lip_2 <- merge(cluster, data_lip_2, by = "X")
+write.csv(data_lip_2, "processing/lipidomics_log2_plusHC.csv")
+```
 
-write.csv(data, "processing/lipidomics_log2_plusHC.csv", row.names = FALSE)
+
+## clinical data
+```{r}
+clinical_comp <- read.csv("data/clinical_comp.csv")
+clinical <- read.xlsx("data/data_base_200_patients_COCOMO_filtered.xlsx", 1)
+```
+
+```{r}
+clinical <- merge(clinical, clinical_comp, by = "id")
+rownames(clinical) <- clinical$id
+clinical_interest <- read.csv("data/clinical_data_of_interest_microbiome_project.csv")
+clinical_2 <- clinical_interest$name_table[!clinical_interest$name_table %in% colnames(clinical)]
+clinical <- clinical[,colnames(clinical) %in% clinical_interest$name_table]
+clinical$id <- rownames(clinical)
+write.csv(clinical, paste0("processing/clinical_data_", name_ana, ".csv"))
+```
+
+```{r}
+names(data)[1] <- "id"
+data <- merge(clinical, data, by = "id")
+```
+
+```{r}
+names(data)
+```
+
+```{r}
+rownames(data) <- data$id
+clinical <- data[,2:36]
+
+write.csv(clinical, paste0("processing/clinical_ordered_", name_ana, ".csv"))
 ```
