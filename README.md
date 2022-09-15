@@ -10,6 +10,10 @@ Multi-omics characterization of 97 people living with HIV under antiretroviral t
 git clone https://github.com/neogilab/HIV_multiomics.git
 cd HIV_multiomics
 ```
+### Download data from [https://figshare.com/]
+[https://doi.org/10.6084/m9.figshare.21120268.v1]
+[https://doi.org/10.6084/m9.figshare.21120271.v1]
+[https://doi.org/10.6084/m9.figshare.21088066.v1]
 
 ### Requirements
 
@@ -45,8 +49,8 @@ BiocManager::install(bio_pkgs)
 Rscript create_folders.R
 ```
 
-2) Move data files to folder data
-3) Change path to your own computer
+2) Move data files to folder data (additional clinical parameters are in the data folder)
+3) Change path to your own computer for each notebook
 4) Execute R notebooks for producing tables and figures
 
 ### Author
