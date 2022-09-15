@@ -5,19 +5,16 @@ output: html_notebook
 
 
 Input : OTU table (genus, family, phylum)
-1) Remove features with strange annotations
-2
 
-### clean environment
+### enter your path to folder
 ```{r}
-rm(list=ls())
+path <- "~/Desktop/Code-PHD/Git/HIV_multiomics/"
 ```
 
 ### set directory
 ```{r setup}
-    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+    knitr::opts_knit$set(root.dir = normalizePath(path)) 
 ```
-
 
 ```{r}
 library(dplyr)
@@ -44,10 +41,6 @@ col_border <- darken(col, 0.5)
 # 1) prepare phyloseq input
 ## load data
 ## remove HC
-
-
-
-
 ```{r}
 data_genus <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/data/microbiome_COCOMO_genus.csv")
 data_family <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/data/microbiome_COCOMO_family.csv")

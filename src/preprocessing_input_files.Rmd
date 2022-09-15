@@ -1,0 +1,49 @@
+---
+title: "Preprocessing input files"
+output: html_notebook
+---
+
+
+
+
+### enter your path to folder
+```{r}
+path <- "/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics"
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath(path)) 
+```
+
+```{r}
+library(xlsx)
+```
+
+/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics/data/data_base_200_patients_COCOMO_filtered.xlsx
+/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics/data/Original_Scale_Data_CLP.xlsx
+/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics/data/Supplementary Data 1.xlsx
+
+## Lipidomics
+```{r}
+
+```
+
+## Metabolomics
+```{r}
+
+```
+
+## Microbiome
+### select rarefied files for genus, family and phylum
+```{r}
+data_genus <- read.xlsx("data/COCOMO-request.SHH.withfamilyandphylum.xlsx", 2)
+write.csv(data_genus, "data/microbiome_COCOMO_genus.csv")
+
+data_family <- read.xlsx("data/COCOMO-request.SHH.withfamilyandphylum.xlsx", 4)
+write.csv(data_family, "data/microbiome_COCOMO_family.csv")
+
+data_phylum <- read.xlsx("data/COCOMO-request.SHH.withfamilyandphylum.xlsx", 6)
+write.csv(data_phylum, "data/microbiome_COCOMO_phylum.csv")
+```
+
