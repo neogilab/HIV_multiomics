@@ -32,8 +32,6 @@ library(compositions)
 clinical_data <- read.csv("processing/clinical_data_clean_for_regression_models.csv")
 ```
 
-
-/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/data_family_clean.csv
 ## Load data
 ```{r}
 data_lip <- read.csv("data/clp_lipidomics_data.csv")
@@ -130,6 +128,7 @@ groups <- clinical_data$cluster
 ```{r}
 MOFAobject <- create_mofa(data_2)
 ```
+
 ```{r}
 group_data <- data.frame(MOFAobject@samples_metadata)
 clinical_data

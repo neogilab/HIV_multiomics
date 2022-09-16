@@ -1,0 +1,290 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+### enter your path to folder
+```{r}
+path <- "/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics"
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath(path)) 
+```
+
+```{r}
+library(xlsx)
+library(gplots)
+library(ComplexHeatmap)
+library(circlize)
+library(limma)
+library("colorspace")
+library(ggplot2)
+library(dplyr)
+library(scales)
+```
+
+```{r}
+col <- c("#6b8150", "#2273C3","#EFC144","#868686")
+col_border <- darken(col, 0.5)
+```
+
+```{r}
+cluster <- read.csv("processing/cluster_SNF_3_omics_3_clusters_plusHC.csv")
+cluster$X <- NULL
+names(cluster)[2] <- "X"
+```
+
+"processing/lipidomics_log2_plusHC.csv"
+
+```{r}
+data_lip <- read.csv("processing/lipidomics_log2_plusHC.csv", check.names = FALSE)
+data_lip$cluster <- factor(data_lip$cluster, levels = c("Ctrl", 1, 2, 3))
+data_met <- read.csv("processing/metabolomics_log2_plusHC.csv", check.names = FALSE)
+data_met$cluster <- factor(data_met$cluster, levels = c("Ctrl", 1, 2, 3))
+```
+
+```{r}
+mic <- read.csv("processing/relative_abundance_table.csv", row.names = 1)
+mic <- data.frame(t(mic))
+mic$X <- gsub("X","", rownames(mic))
+```
+
+```{r}
+c1 <- data_met[,c(1:2)]
+c2 <- data_lip[,c(1:2)]
+
+clustering <- merge(c1, cluster, by = "X")
+clustering <- merge(c2, clustering, by = "X")
+```
+
+
+## LIMMA metabolites
+```{r}
+pca_data_2 <- data_met
+```
+
+```{r}
+group <- as.factor(pca_data_2$cluster)
+design <- model.matrix( ~ 0 + group)
+design
+```
+
+```{r}
+fit <- lmFit(t(pca_data_2[,-c(1,2)]), design)
+```
+
+```{r}
+comp <- c("group1-groupCtrl", "group2-groupCtrl", "group3-groupCtrl", "group3-group1", "group2-group1", "group3-group2")
+```
+
+```{r}
+cont.matrix <- makeContrasts(Ctrl_C1 = comp[1],
+                             Ctrl_C2 = comp[2],
+                             Ctrl_C3 = comp[3],
+                             C3_C1 = comp[4],
+                             C2_C1 = comp[5],
+                             C2_C3 = comp[6],
+                             levels=design)
+fit.cont <- contrasts.fit(fit, cont.matrix)
+fit.cont <- eBayes(fit.cont)
+```
+
+```{r}
+top_table <- data.frame(BIOCHEMICAL = NA , logFC= NA , P.Value= NA , adj.P.Val= NA , Comp= NA )
+
+for (i in 1:length(comp)) {
+  top_table_1 <- topTable(fit.cont, coef=i, adjust="BH", n = Inf, sort.by = "P")
+  top_table_1$Comp <- comp[i]
+  top_table_1$BIOCHEMICAL <- rownames(top_table_1)
+  top_table_1 <- select(top_table_1, BIOCHEMICAL, logFC, P.Value, adj.P.Val, Comp)
+  write.table(top_table_1$BIOCHEMICAL[top_table_1$adj.P.Val < 0.1], paste0("processing/GSEA/met_", comp[i],".txt"), quote = FALSE, row.names = F)
+  top_table <- rbind(top_table, top_table_1)
+}
+
+top_table <- top_table[complete.cases(top_table),]
+path_table <- paste0("results/LIMMA_results_metabolites_with_HC.csv")
+
+print(path_table)
+write.csv(top_table, file =path_table)
+
+DF_top_table <-top_table[top_table$adj.P.Val < 0.1, ]
+
+path_results <- paste0("results/LIMMA_results_metabolites_with_HC_filt.csv")
+
+write.table(DF_top_table, file = path_results)
+```
+
+
+## Add kruskall wallis test to find metabolites changing in the three groups
+```{r}
+table_DGE <- data.frame(Metabolites = unique(DF_top_table$BIOCHEMICAL),
+                        LFC_G1G2 = NA, LFC_G1G3 = NA, LFC_G2G3 =NA, LFC_CTG1 = NA, LFC_CTG2 = NA, LFC_CTG3 =NA,
+                        FDR_G1G2 = NA, FDR_G1G3 = NA, FDR_G2G3 =NA, FDR_CTG1 = NA, FDR_CTG2 = NA, FDR_CTG3 =NA,
+                        pval_kruskal = NA)
+```
+
+```{r}
+data <- data_met
+
+DF_top_table <-top_table
+```
+
+```{r}
+for (i in 1:nrow(table_DGE)){
+  c1 <- data[data$cluster == 1,i]
+  c2 <- data[data$cluster == 2,i]
+  c3 <- data[data$cluster == 3,i]
+  ctrl <- data[data$cluster == "Ctrl",i]
+  table_DGE[i, 2] <- DF_top_table$logFC[DF_top_table$BIOCHEMICAL == table_DGE$Metabolites[i] & DF_top_table$Comp == "group2-group1"]
+  table_DGE[i, 3] <- DF_top_table$logFC[DF_top_table$BIOCHEMICAL == table_DGE$Metabolites[i] & DF_top_table$Comp == "group3-group1"]
+  table_DGE[i, 4] <- DF_top_table$logFC[DF_top_table$BIOCHEMICAL == table_DGE$Metabolites[i] & DF_top_table$Comp == "group3-group2"]
+  table_DGE[i, 5] <- DF_top_table$logFC[DF_top_table$BIOCHEMICAL == table_DGE$Metabolites[i] & DF_top_table$Comp == "group1-groupCtrl"]
+  table_DGE[i, 6] <- DF_top_table$logFC[DF_top_table$BIOCHEMICAL == table_DGE$Metabolites[i] & DF_top_table$Comp == "group2-groupCtrl"]
+  table_DGE[i, 7] <- DF_top_table$logFC[DF_top_table$BIOCHEMICAL == table_DGE$Metabolites[i] & DF_top_table$Comp == "group3-groupCtrl"]
+  
+  table_DGE[i, 8] <- DF_top_table$adj.P.Val[DF_top_table$BIOCHEMICAL == table_DGE$Metabolites[i] & DF_top_table$Comp == "group2-group1"]
+  table_DGE[i, 9] <- DF_top_table$adj.P.Val[DF_top_table$BIOCHEMICAL == table_DGE$Metabolites[i] & DF_top_table$Comp == "group3-group1"]
+  table_DGE[i, 10] <- DF_top_table$adj.P.Val[DF_top_table$BIOCHEMICAL == table_DGE$Metabolites[i] & DF_top_table$Comp == "group3-group2"]
+  table_DGE[i, 11] <- DF_top_table$adj.P.Val[DF_top_table$BIOCHEMICAL == table_DGE$Metabolites[i] & DF_top_table$Comp == "group1-groupCtrl"]
+  table_DGE[i, 12] <- DF_top_table$adj.P.Val[DF_top_table$BIOCHEMICAL == table_DGE$Metabolites[i] & DF_top_table$Comp == "group2-groupCtrl"]
+  table_DGE[i, 13] <- DF_top_table$adj.P.Val[DF_top_table$BIOCHEMICAL == table_DGE$Metabolites[i] & DF_top_table$Comp == "group3-groupCtrl"]
+  
+  table_DGE[i, 14] <- kruskal.test(data[,i+1] ~ cluster, data = data)$p.value
+}
+
+
+table_DGE$FDR_KW <- p.adjust(table_DGE$pval_kruskal, method = "fdr")
+
+table_DGE$LFC_G1G2 <- ifelse(table_DGE$FDR_G1G2 < 0.05, table_DGE$LFC_G1G2, NA)
+table_DGE$LFC_G1G3 <- ifelse(table_DGE$FDR_G1G3 < 0.05, table_DGE$LFC_G1G3, NA)
+table_DGE$LFC_G2G3 <- ifelse(table_DGE$FDR_G2G3 < 0.05, table_DGE$LFC_G2G3, NA)
+table_DGE$LFC_CTG1 <- ifelse(table_DGE$FDR_CTG1 < 0.05, table_DGE$LFC_CTG1, NA)
+table_DGE$LFC_CTG2 <- ifelse(table_DGE$FDR_CTG2 < 0.05, table_DGE$LFC_CTG2, NA)
+table_DGE$LFC_CTG3 <- ifelse(table_DGE$FDR_CTG3 < 0.05, table_DGE$LFC_CTG3, NA)
+
+table_DGE_filt_na <- table_DGE[is.na(table_DGE$LFC_G1G2) & is.na(table_DGE$LFC_G1G3) & is.na(table_DGE$LFC_G2G3) & is.na(table_DGE$LFC_CTG1) & is.na(table_DGE$LFC_CTG2) & is.na(table_DGE$LFC_CTG3),]
+
+
+```
+```{r}
+v <- c()
+j <- c()
+k = 1
+for (i in 1:nrow(table_DGE)) {
+  if (length(which(is.na(table_DGE[i,2:7]) == TRUE)) > 5) {
+    v <- c(v, i)
+    k = k +1
+  }
+}
+```
+
+```{r}
+table_DGE <- table_DGE[-v,]
+write.csv(table_DGE, "processing/processing_KW_metabolomics.csv")
+```
+
+
+## make ven diagram 3 comp
+```{r}
+library(nVennR)
+
+a <- list(DF_top_table$BIOCHEMICAL[DF_top_table$Comp == "group2-group1"])
+b <- list(DF_top_table$BIOCHEMICAL[DF_top_table$Comp == "group3-group1"])
+c <- list(DF_top_table$BIOCHEMICAL[DF_top_table$Comp == "group3-group2"])
+```
+
+```{r}
+# Load library
+library(VennDiagram)
+ # Prepare a palette of 3 colors with R colorbrewer:
+library(RColorBrewer)
+myCol <- brewer.pal(3, "Pastel2")
+
+# Chart
+venn.diagram(x = list(a[[1]], b[[1]], c[[1]]), filename = "results/figures/ven_metabolome", category.names = c("SNF-2vsSNF-1" , "SNF-3vsSNF-1" , " SNF-3vsSNF-2"), fill = myCol, euler.d = TRUE,
+	cex = 1.5,
+	cat.cex = 0.8)
+```
+
+## LIMMA lipids
+```{r}
+pca_data_2 <- data_lip
+```
+
+```{r}
+group <- as.factor(pca_data_2$cluster)
+design <- model.matrix( ~ 0 + group)
+design
+```
+
+```{r}
+fit <- lmFit(t(pca_data_2[,-c(1,2)]), design)
+```
+
+```{r}
+design
+```
+
+```{r}
+comp <- c("group1-groupCtrl", "group2-groupCtrl", "group3-groupCtrl", "group3-group1", "group2-group1", "group3-group2")
+```
+
+```{r}
+cont.matrix <- makeContrasts(Ctrl_C1 = comp[1],
+                             Ctrl_C2 = comp[2],
+                             Ctrl_C3 = comp[3],
+                             C3_C1 = comp[4],
+                             C2_C1 = comp[5],
+                             C2_C3 = comp[6],
+                             levels=design)
+fit.cont <- contrasts.fit(fit, cont.matrix)
+fit.cont <- eBayes(fit.cont)
+```
+
+```{r}
+top_table <- data.frame(BIOCHEMICAL = NA , logFC= NA , P.Value= NA , adj.P.Val= NA , Comp= NA )
+
+for (i in 1:length(comp)) {
+  top_table_1 <- topTable(fit.cont, coef=i, adjust="BH", n = Inf, sort.by = "P")
+  top_table_1$Comp <- comp[i]
+  top_table_1$BIOCHEMICAL <- rownames(top_table_1)
+  top_table_1 <- select(top_table_1, BIOCHEMICAL, logFC, P.Value, adj.P.Val, Comp)
+  write.table(top_table_1$BIOCHEMICAL[top_table_1$adj.P.Val < 0.05], paste0("processing/GSEA/lip_", comp[i],".txt"), quote = FALSE, row.names = F)
+  top_table <- rbind(top_table, top_table_1)
+}
+
+top_table <- top_table[complete.cases(top_table),]
+path_table <- paste0("results/LIMMA_results_lipids_with_HC.csv")
+
+print(path_table)
+write.csv(top_table, file =path_table)
+
+DF_top_table <-top_table[top_table$adj.P.Val < 0.05, ]
+
+path_results <- paste0("results/LIMMA_results_lipids_with_HC_filt.csv")
+
+write.table(DF_top_table, file = path_results)
+```
+
+
+## make ven diagram 3 comp
+```{r}
+library(nVennR)
+
+a <- list(DF_top_table$BIOCHEMICAL[DF_top_table$Comp == "group1-groupCtrl"])
+b <- list(DF_top_table$BIOCHEMICAL[DF_top_table$Comp == "group2-groupCtrl"])
+c <- list(DF_top_table$BIOCHEMICAL[DF_top_table$Comp == "group3-groupCtrl"])
+```
+
+```{r}
+# Load library
+library(VennDiagram)
+ # Prepare a palette of 3 colors with R colorbrewer:
+library(RColorBrewer)
+myCol <- brewer.pal(3, "Pastel2")
+
+# Chart
+venn.diagram(x = list(a[[1]], b[[1]], c[[1]]), filename = "results/figures/ven_lipidome", category.names = c("Ctrl vs C1" , "Ctrl vs C2" , " Ctrl vs C3"), fill = myCol)
+```

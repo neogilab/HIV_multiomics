@@ -1,0 +1,58 @@
+---
+title: "KW metabolomics"
+output: html_notebook
+---
+
+
+### enter your path to folder
+```{r}
+path <- "/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics"
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath(path)) 
+```
+
+```{r}
+library(gridExtra)
+library(ggpubr)
+library(xlsx)
+library(gplots)
+library(ComplexHeatmap)
+library(circlize)
+library(limma)
+library("colorspace")
+library(ggplot2)
+library(dplyr)
+library(scales)
+```
+
+```{r}
+col <- c("#6b8150", "#2273C3","#EFC144","#868686")
+col_border <- darken(col, 0.5)
+```
+
+
+```{r}
+cluster <- read.csv("processing/cluster_SNF_3_omics_3_clusters.csv")
+cluster$X <- NULL
+names(cluster)[2] <- "X"
+```
+
+## load data
+
+```{r}
+data <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/data/clp_um_new_data.csv", header = TRUE, check.names=FALSE)
+names(data)[1] <- "X"
+condition <- data$Group
+#data$Group <- NULL
+```
+
+```{r}
+data <- merge(cluster, data, by = "X", all.y = TRUE)
+data$cluster <- ifelse(data$Group == "Ctrl", "Ctrl", data$cluster)
+new_cluster <- data.frame(cluster = data$cluster, id = data$X)
+write.csv(new_cluster, "processing/cluster_SNF_3_omics_3_clusters_plusHC.csv")
+```
+
