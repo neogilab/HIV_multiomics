@@ -222,7 +222,7 @@ x$Factor <- rownames(x)
 x2 <- melt(x, id.vars = c("Factor"))
 x2 <- x2[x2$value != 0,]
 
-pdf("results/figures_2/MOFA_covariate_association_model_4.pdf")
+pdf("results/figures/MOFA_covariate_association_model_4.pdf")
 correlate_factors_with_covariates(MOFAobject, 
   covariates = c("cluster", "hypertension", "Transm_mode", "VAT", "SAT","CD4_CD8", "METS", "AGE", "BMI", "GENDER"), 
   plot="log_pval"
@@ -230,7 +230,7 @@ correlate_factors_with_covariates(MOFAobject,
 dev.off()
 
 x2$value <- NULL
-write.csv(x2, "MOFA_correlation_clinical_parameters.csv", row.names = FALSE, quote = FALSE)
+write.csv(x2, "processing/MOFA_correlation_clinical_parameters.csv", row.names = FALSE, quote = FALSE)
 ```
 
 
@@ -460,10 +460,6 @@ imp <- distinct(imp, Item, variable, .keep_all= TRUE)
 ```{r}
 dge <- read.delim("processing/processing_microbione_derived_metabolomics_filt.csv", sep = ",")
 m <- imp$met[which(imp$met %in% dge$Metabolite == TRUE)]
-```
-
-```{r}
-
 ```
 
 ```{r}

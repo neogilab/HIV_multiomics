@@ -15,7 +15,11 @@ path <- "/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics"
 ```
 
 ```{r}
-#library(summarize)
+name_ana <- "microbiome_project"
+```
+
+```{r}
+library(summarize)
 library(dplyr)
 library(xlsx)
 ```
@@ -38,8 +42,8 @@ write.csv(clinical, paste0("processing/clinical_data_", name_ana, ".csv"))
 
 
 ```{r}
-dur <- read.csv("processing/duration_ART_COCOMO_3.csv")
-dur <- select(dur, id, duration_months, duration_years)
+#dur <- read.csv("data/duration_ART_COCOMO_3.csv")
+#dur <- select(dur, id, duration_months, duration_years)
 ```
 
 ```{r}
@@ -48,9 +52,9 @@ rownames(clinical) <- clinical$X
 ```
 
 ```{r}
-data <- read.csv("processing/summary_data_interest_COCOMO_microbiome.csv")
-dur <- dur[dur$id %in% data$X,]
-names(dur)[1] <- "X"
+data <- read.csv("data/summary_data_interest_COCOMO_microbiome.csv")
+#dur <- dur[dur$id %in% data$X,]
+#names(dur)[1] <- "X"
 ```
 
 ```{r}
@@ -60,7 +64,7 @@ data <- merge(data, data_2, by = "X")
 ```
 
 ```{r}
-data <- merge(dur, data, by = "X")
+#data <- merge(dur, data, by = "X")
 ```
 
 ```{r}
@@ -89,28 +93,16 @@ data$Combined_therapy <- gsub(".*TDF.*", "TAF/TDF", data$Combined_therapy)
 data$Combined_therapy <- gsub(".*\\/.*", "Other", data$Combined_therapy)
 data$Combined_therapy <- factor(data$Combined_therapy, levels = c("ABC", "AZT", "TAF/TDF", "Other"))
 ```
+
 ```{r}
 x <- which(names(data) == "Combined_therapy")
-
 names(data)[x] <- "first_drug"
-data$first_drug
 ```
-
-
-Homosexual/bisexual
-Blood transfusion
-PWID
-Heterosexual
-Other/unknown
-
 ```{r}
 data$Transm_mode[data$Transm_mode == 7] <- 3
 data$Transm_mode[data$Transm_mode == 8] <- 3
 ```
 
-```{r}
-data$CD8
-```
 
 ## separate numeric and logical
 ```{r}
@@ -193,39 +185,10 @@ col_classes <- function(df) {
 write.csv(data, "processing/clinical_data_clean_for_regression_models.csv")
 data$X <- NULL
 data_factor <- data[, c(which(col_classes(data) == "factor"))]
-data_numeric <- data[, c(3, which(col_classes(data) != "factor"))]
+data_numeric <- data[, c(1, which(col_classes(data) != "factor"))]
 ```
 
-```{r}
-library(summarize)
 
-age <- data[,4]
-duration <- data[,2]
-```
-
-```{r}
-age_c1 <- data[data$cluster == 1,4]
-```
-
-```{r}
-summary(age_c1)
-```
-```{r}
-summary(duration)
-```
-
-```{r}
-summary(age)
-IQR(age)
-```
-
-```{r}
-data(sleep)
-medIQR(sleep$extra)
-medIQR(extra ~ group, data = sleep)
-```
-
-paste0(round(medIQR(c1)[[1]], 2), "(", round(medIQR(c1)[[2]], 2), "-", round(medIQR(c1)[[3]], 2), ")")
 
 ```{r}
 names(data_factor)
@@ -233,9 +196,7 @@ names(data_factor)
 ```{r}
 names(data_numeric)
 ```
-```{r}
 
-```
 
 ### Numeric test normality
 
@@ -249,6 +210,7 @@ data_numeric
 j = 1
 list_norm <- list()
 for (i in 3:ncol(data_numeric)){
+  print(names(data_numeric)[i])
   c1 <- data_numeric[data_numeric$cluster == 1,i]
   c2 <- data_numeric[data_numeric$cluster == 2,i]
   c3 <- data_numeric[data_numeric$cluster == 3,i]
@@ -437,6 +399,7 @@ write.xlsx(table_numeric, "results/clinical/COCOMO_3_layers_non_norm_numeric_val
 library(ggplot2)
 library(ggpubr)
 ```
+
 ```{r}
 unique(table_numeric$parameter)
 ```

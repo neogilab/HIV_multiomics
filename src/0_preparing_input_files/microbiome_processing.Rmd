@@ -1,0 +1,194 @@
+---
+title: "Microbiome processing"
+output: html_notebook
+---
+
+
+Input : OTU table
+
+1) Calculate relative abundance
+2) Calculate uniqueness
+
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### enter your path to folder
+```{r}
+path <- "~/Desktop/Code-PHD/Git/HIV_multiomics/"
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath(path)) 
+```
+
+```{r}
+name_ana <- "microbiome_project"
+```
+
+```{r}
+library(phyloseq)
+library("ggplot2")
+library("scales")
+library("grid")
+library(xlsx)
+library("colorspace")
+library(vegan)
+library(reshape2)
+```
+
+
+
+```{r}
+col <- c("#6b8150", "#2273C3","#EFC144","#868686")
+col_border <- darken(col, 0.5)
+```
+
+
+# 1) prepare phyloseq input
+## load data
+## remove HC
+```{r}
+data_genus <- read.xlsx("data/COCOMO-request.SHH.withfamilyandphylum.xlsx", 2)
+```
+
+```{r}
+#data_genus <- data_genus[data_genus$Category == "HIV",]
+```
+
+## make pca based on genus, family, phylum
+```{r}
+names <- data_genus$ID
+data_genus$ID <- NULL
+condition <- data_genus$Category
+data_genus$Category <- NULL
+
+otu_table <- data.frame(t(data_genus))
+colnames(otu_table) <- names
+```
+
+## extract genus
+```{r}
+otu_tax <- rownames(otu_table)
+names_otu <- paste0("Otu",1:nrow(otu_table))
+rownames(otu_table) <- names_otu
+```
+
+```{r}
+tax_table <- data.frame(tanonomy = otu_tax)
+rownames(tax_table) <- names_otu
+```
+
+```{r}
+names(tax_table)
+```
+
+```{r}
+names_tax <- c("Super_group", "Division", "Class", "Order", "Family", "Genus")
+
+tax_table_2 <- data.frame(matrix(rep(0,6), 1, 6))
+
+colnames(tax_table_2) <- names_tax
+
+for (i in 1:nrow(tax_table)) {
+    x <- strsplit(as.character(tax_table[i,1]), "__")
+    x[[1]][7] <- ifelse(grepl("D_5", x[[1]][6]), x[[1]][7] , ".")
+    n <- c()
+    
+    for (j in 2:length(x[[1]])) {
+        y <- x[[1]][j]
+        y <- gsub("\\.D.*", "",y)
+        m <- j-1
+        n[[m]] <- y
+    }
+    tax_table_2 <- rbind(tax_table_2, n)
+}
+```
+
+```{r}
+tax_table_2 <-tax_table_2[-1,]
+tax_table_2$Genus[tax_table_2$Genus == "Bacteria"] <- "uncultured"
+tax_table_2$Family[tax_table_2$Family == "."] <- "uncultured"
+tax_table_2$Family[tax_table_2$Genus == "."] <- "uncultured"
+```
+
+```{r}
+for (i in 1:nrow(tax_table_2)) {
+    for (j in 1:ncol(tax_table_2)) {
+        if(grepl("uncultured",tax_table_2[i,j])){
+            print(tax_table_2[i,j])
+            tax_table_2[i,j] <- "uncultured"
+        }
+    }
+}
+```
+
+```{r}
+rownames(tax_table_2) <- names_otu
+```
+
+
+```{r}
+write.csv(tax_table_2, "processing/tax_table_COCOMO.csv")
+```
+
+```{r}
+samples_table <- data.frame(condition = condition)
+rownames(samples_table) <- names
+```
+
+```{r}
+samples_table$X <- rownames(samples_table)
+rownames(samples_table) <- samples_table$X
+samples_table$X <- NULL
+```
+
+```{r}
+otu_mat <- as.matrix(otu_table)
+tax_mat <- as.matrix(tax_table_2)
+#samples_table <- as.matrix(samples_table)
+```
+
+```{r}
+OTU = otu_table(otu_mat, taxa_are_rows = TRUE)
+TAX = tax_table(tax_mat)
+samples = sample_data(samples_table)
+```
+
+```{r}
+carbom <- phyloseq(OTU, TAX, samples)
+carbom
+```
+
+```{r}
+saveRDS(carbom, "processing/model_phyloseq_no_filter.rds")
+```
+
+## calculate relative abundance and filtering
+```{r}
+GPr = transform_sample_counts(carbom, function(x) x/sum(x))
+saveRDS(GPr, "processing/model_phyloseq_no_filter_relative_abundance.rds")
+#GPf = filter_taxa(GPr, function(x) var(x) > 1e-05, TRUE) ## NO FILTERING
+```
+
+```{r}
+relative_abundance_table <- data.frame(GPr@otu_table)
+write.csv(relative_abundance_table, "processing/relative_abundance_table.csv")
+```
+
+## calculate alpha diversity
+```{r}
+table_alpha <- data.frame(matrix(108, 108,1))
+list_measure <- c("Observed", "Chao1", "ACE", "Shannon", "Simpson", "InvSimpson", "Fisher")
+for (x in 1:length(list_measure)) {
+    a <- estimate_richness(carbom, split = TRUE, measures = list_measure[x])
+    table_alpha <- cbind(table_alpha, a)
+}
+
+table_alpha$matrix.108..108..1.
+rownames(table_alpha) <- gsub("X", "",rownames(table_alpha))
+write.csv(table_alpha, "processing/table_alpha_diversity.csv")
+```

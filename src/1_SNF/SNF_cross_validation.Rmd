@@ -85,6 +85,11 @@ rownames(data_mi) <- gsub("X","",rownames(data_mi))
 data_mi <- data_mi[rownames(data_mi) %in% clinical_data$X, ]
 data_mi <- data_mi[order(match(rownames(data_mi), rownames(data_lip))), ]
 ```
+```{r}
+write.csv(data_mi, "processing/data_mi_filt_SNF.csv")
+write.csv(data_met, "processing/data_met_filt_SNF.csv")
+write.csv(data_lip, "processing/data_lip_filt_SNF.csv")
+```
 
 ## Normalization
 ```{r}

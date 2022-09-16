@@ -168,8 +168,8 @@ pca_data <- data_lip
 pca_data_3 <- pca_data
 pca_data$X <- NULL
 pca_data[is.na(pca_data)] <-  0
-remove <- which(apply(pca_data, 2, var)==0)
-pca_data <- pca_data[,-remove]
+#remove <- which(apply(pca_data, 2, var)==0)
+#pca_data <- pca_data[,-remove]
 pca <- prcomp(pca_data[,-1], scale. = TRUE)
 df_out <- as.data.frame(pca$x)
 df_out$group <- as.factor(pca_data$cluster)
@@ -189,9 +189,6 @@ x <- abs(PCAloadings_2$PC1) < 0.1 & abs(PCAloadings_2$PC2) < 0.1
 PCAloadings_2$PC1[x] <- NA
 PCAloadings_2$PC2[x] <- NA
 PCAloadings_2$Variables[x] <- NA
-```
-```{r}
-pca_data
 ```
 
 ```{r}
@@ -221,8 +218,8 @@ ggplot(gg)+
           panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
           panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
           plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
-          legend.background=element_rect(fill = alpha("white", 0)))+ 
-  geom_text(aes(label = paste0("(", resp, ")")), nudge_y = -0.25)
+          legend.background=element_rect(fill = alpha("white", 0))) #+ 
+  #geom_text(aes(label = paste0("(", resp, ")")), nudge_y = -0.25)
 
 path_fig <- paste0("results/figures/PCA_clustering_97_patients_3_clusters_lipidomics.pdf")
 dev.copy(pdf, path_fig, height = 4, width = 6)
@@ -266,8 +263,8 @@ pca_data <- data_met
 pca_data_3 <- pca_data
 pca_data$X <- NULL
 pca_data[is.na(pca_data)] <-  0
-remove <- which(apply(pca_data, 2, var)==0)
-pca_data <- pca_data[,-remove]
+#remove <- which(apply(pca_data, 2, var)==0)
+#pca_data <- pca_data[,-remove]
 pca <- prcomp(pca_data[,-1], scale. = TRUE)
 df_out <- as.data.frame(pca$x)
 df_out$group <- as.factor(pca_data$cluster)
