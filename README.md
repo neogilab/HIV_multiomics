@@ -58,7 +58,7 @@ preprocessing_input_files.Rmd
 microbiome_processing.Rmd
 
 
-2) SNF
+2) SNF \\
 
 SNF_cross_validation.Rmd
 Identify_HC_clusters_in_data.Rmd
