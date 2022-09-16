@@ -53,52 +53,52 @@ Rscript create_folders.R
 ####  Change path to your own computer for each notebook
 ####  Execute R notebooks for producing tables and figures
 
-1) Files processing
-preprocessing_input_files.Rmd
+1) Files processing \
+preprocessing_input_files.Rmd \
 microbiome_processing.Rmd
 
 
-2) SNF \\
+2) SNF \
 
-SNF_cross_validation.Rmd
+SNF_cross_validation.Rmd \
 Identify_HC_clusters_in_data.Rmd
 
 
-3) Metabolome / lipidome analysis
+3) Metabolome / lipidome analysis \
 
-Merge_data_cluster.Rmd
-Boxplot_lipid_classes.Rmd
-LIMMA_microbiome_cocomo_2_HC_HIV.Rmd
+Merge_data_cluster.Rmd \
+Boxplot_lipid_classes.Rmd \
+LIMMA_microbiome_cocomo_2_HC_HIV.Rmd \
 LIMMA_microbiome_cocomo_2_HC.Rmd
 
 
-4) Microbiome analysis
+4) Microbiome analysis \
 
-Make_table_clinical_with_microbiome.Rmd
-COCOMO_microbiome_preprocessing.Rmd
-figures_microbiome_extra.Rmd
-preparing_lEfSe_input.Rmd
-Microbiome_DGE_family.Rmd
-Boxplots_top_microbes.Rmd
+Make_table_clinical_with_microbiome.Rmd \
+COCOMO_microbiome_preprocessing.Rmd \
+figures_microbiome_extra.Rmd \
+preparing_lEfSe_input.Rmd \
+Microbiome_DGE_family.Rmd \
+Boxplots_top_microbes.Rmd \
 Statistic_tests_microbiome.Rmd
 
 
-5) Clinical
+5) Clinical \
 
 Statistics_COCOMO-microbiome_3.Rmd
 
-6) MDM
+6) MDM \
 
-Microbiome_derived_metabolites.Rmd
+Microbiome_derived_metabolites.Rmd \
 association_clinical_items_MDM.Rmd
 
 
-7) MOFA
-mofa_3_layers_4.Rmd
-mofa_3_layers_downstream_analysis_4.Rmd
+7) MOFA \
+mofa_3_layers_4.Rmd \
+mofa_3_layers_downstream_analysis_4.Rmd \
 mofa_3_layers_MSEA.Rmd
 
-8) Figures
+8) Figures \
 PCA_cocomo_3_layers_2.Rmd
 
 ### Author
