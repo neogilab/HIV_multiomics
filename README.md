@@ -53,7 +53,7 @@ Rscript create_folders.R
 ####  Change path to your own computer for each notebook
 ####  Execute R notebooks for producing tables and figures
 
-1) Files processing
+1) Files processing \
 preprocessing_input_files.Rmd \
 microbiome_processing.Rmd
 
@@ -83,7 +83,7 @@ Boxplots_top_microbes.Rmd \
 Statistic_tests_microbiome.Rmd
 
 
-5) Clinical
+5) Clinical \
 
 Statistics_COCOMO-microbiome_3.Rmd
 
@@ -98,7 +98,7 @@ mofa_3_layers_4.Rmd \
 mofa_3_layers_downstream_analysis_4.Rmd \
 mofa_3_layers_MSEA.Rmd
 
-8) Figures
+8) Figures \
 PCA_cocomo_3_layers_2.Rmd
 
 ### Author
