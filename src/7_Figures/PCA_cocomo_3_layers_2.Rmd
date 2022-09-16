@@ -168,8 +168,8 @@ pca_data <- data_lip
 pca_data_3 <- pca_data
 pca_data$X <- NULL
 pca_data[is.na(pca_data)] <-  0
-#remove <- which(apply(pca_data, 2, var)==0)
-#pca_data <- pca_data[,-remove]
+remove <- which(apply(pca_data, 2, var) == 0)
+pca_data <- pca_data[,-remove]
 pca <- prcomp(pca_data[,-1], scale. = TRUE)
 df_out <- as.data.frame(pca$x)
 df_out$group <- as.factor(pca_data$cluster)
@@ -189,6 +189,10 @@ x <- abs(PCAloadings_2$PC1) < 0.1 & abs(PCAloadings_2$PC2) < 0.1
 PCAloadings_2$PC1[x] <- NA
 PCAloadings_2$PC2[x] <- NA
 PCAloadings_2$Variables[x] <- NA
+```
+
+```{r}
+a1
 ```
 
 ```{r}
@@ -259,12 +263,11 @@ dev.off()
 ## pca based on cluster (metabolomics)
 ```{r}
 pca_data <- data_met
-#pca_data <- merge(pca_data_2, mic, by = "X")
 pca_data_3 <- pca_data
 pca_data$X <- NULL
 pca_data[is.na(pca_data)] <-  0
-#remove <- which(apply(pca_data, 2, var)==0)
-#pca_data <- pca_data[,-remove]
+remove <- which(apply(pca_data, 2, var)==0)
+pca_data <- pca_data[,-remove]
 pca <- prcomp(pca_data[,-1], scale. = TRUE)
 df_out <- as.data.frame(pca$x)
 df_out$group <- as.factor(pca_data$cluster)

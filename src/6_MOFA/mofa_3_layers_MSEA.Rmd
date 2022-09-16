@@ -267,6 +267,7 @@ data <- data[order(data$Factor),]
 data$Factor <- factor(data$Factor, levels = paste0("Factor", 1:15))
 data <- data[order(data$View),]
 data$Pathways <- factor(data$Pathways, levels = unique(data$Pathways))
+names(data)[5] <- "parameter"
 data$parameter <- factor(data$parameter, levels = c("cluster", "GENDER", "AGE", "BMI", "VAT", "SAT", "METS", "hypertension", "Transm_mode"))
 ```
 
