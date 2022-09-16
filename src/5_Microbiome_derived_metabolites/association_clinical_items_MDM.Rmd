@@ -99,7 +99,7 @@ plm$padjust <- p.adjust(plm$pvalue,method="BH")
 #plm$R2 <- r
 #plm$R2_adj <- r2
 sigplm <- plm[plm$padjust<0.05,] #look only at those with adjusted p.value < 0.05
-sigplm
+sigplm <- sigplm[complete.cases(sigplm),]
 
 write.csv(plm, "results/results_regression_metabolome_mdm_clinical.csv")
 write.csv(sigplm, "results/results_regression_metabolome_mdm_clinical_filt.csv")

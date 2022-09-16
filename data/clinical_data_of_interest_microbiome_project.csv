@@ -1,0 +1,42 @@
+Variable,name_table,additional info,type
+severe immunodeficiency,CD4_nadir,CD4 nadir < 50 or 200 associated with microbiome,num
+VAT,VAT,associated with microbiome,num
+SAT,SAT,,num
+transmission mode,Transm_mode,sexual behavior --> change microbiome,cat
+age,AGE,,num
+sex,GENDER,,cat
+BMI,BMI,,num
+Ethnic,Ethnic,,cat
+Origin,Origin,,cat
+self- reported physical activity,H2_74a,change microbiome,cat
+weekly consumption of beef,H2_53a,,num
+weekly consumption of poultry,H2_53c,,num
+weekly consumption of vegetables,H2_55,,num
+weekly consumption of fruit,H2_56,,num
+fat used in food preparation,H2_54,,cat
+waist circumference,ob6, waist circumference ≥94 cm in men and ≥80 cm in women,num
+systolic blood pressure,ob10,≥130 mm Hg,num
+ diastolic blood pressure,ob11,≥85 mm Hg,num
+antihypertensive treatment,m2_02a,,cat
+diabete,diabetes,self-reported diabetes and/or antidiabetic treatment / plasma glucose level ≥11.1 mmol/L,cat
+hypertension,hypertension,,cat
+central_obesity,central_obesity,,cat
+CD4 at ART initiation,CD4_ART,,num
+Current CD4 count (closest to date of inclusion),CD4,,num
+Current CD8 count (closest to date of inclusion),CD8,,num
+Current VL,VL,,num
+VL at ART initiation,VL_ART,,num
+duration of cART,ART1_dur.x,,num
+ART1_prev_dur,ART1_prev_dur.x,,num
+smoking,cum_smoking,,num
+smoking,curr_smoking,,num
+alcohol,alcohol,,num
+Metabolic syndrome,METS,,cat
+prior exposure to thy- midine analogues or didanosine,?,,
+hypertriglyceridemia,?,,
+sCD14,?,,
+LBP,?,,
+HDL level,?,≤1.036 mmol/L in men or ≤0.295 mmol/L in women,
+nonfasting plasma triglyceride level,?,≥1.693 mmol/L,
+Combined_therapy,Combined_therapy,,
+X3rd_Drug,X3rd_Drug,,

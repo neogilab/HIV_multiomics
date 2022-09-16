@@ -33,7 +33,7 @@ names(data_met)[-1] <- gsub("X", "", names(data_met)[-1])
 data <- data.frame(t(data_met[,-1]))
 colnames(data) <- data_met$BIOCHEMICAL
 data <- log2(data)
-data <- data[,sapply(data, var) >= 0.3]
+#data <- data[,sapply(data, var) >= 0.3]
 data$X <- rownames(data)
 data <- merge(cluster, data, by = "X")
 write.csv(data, "processing/metabolomics_log2_plusHC.csv", row.names = FALSE)
@@ -49,7 +49,7 @@ data_lip_2 <- data.frame(t(data_lip[,-1]))
 colnames(data_lip_2) <- data_lip$BIOCHEMICAL
 
 data_lip_2 <- log2(data_lip_2)
-data_lip_2 <- data_lip_2[,sapply(data_lip_2, var) >= 0.3]
+#data_lip_2 <- data_lip_2[,sapply(data_lip_2, var) >= 0.3]
 data_lip_2$X <- rownames(data_lip_2)
 data_lip_2 <- merge(cluster, data_lip_2, by = "X")
 write.csv(data_lip_2, "processing/lipidomics_log2_plusHC.csv", row.names = FALSE)

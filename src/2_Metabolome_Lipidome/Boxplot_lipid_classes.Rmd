@@ -96,7 +96,49 @@ for (i in 2:ncol(data)) {
 ```
 
 ```{r}
-pdf("results/figures/boxplots_lipids.pdf", height = 17, width = 10)
-grid.arrange(list_box[[1]], list_box[[2]], list_box[[4]], list_box[[5]], list_box[[6]], list_box[[7]], list_box[[8]], list_box[[9]], list_box[[10]], list_box[[11]], list_box[[12]], list_box[[13]], nrow = 4)
-dev.off()
+group <- as.factor(data$cluster)
+design <- model.matrix( ~ 0 + group)
+```
+```{r}
+fit <- lmFit(t(data[,-c(1)]), design)
+```
+
+```{r}
+comp <- c("group1-groupCtrl", "group2-groupCtrl", "group3-groupCtrl", "group3-group1", "group2-group1", "group3-group2")
+```
+
+```{r}
+cont.matrix <- makeContrasts(Ctrl_C1 = comp[1],
+                             Ctrl_C2 = comp[2],
+                             Ctrl_C3 = comp[3],
+                             C3_C1 = comp[4],
+                             C2_C1 = comp[5],
+                             C2_C3 = comp[6],
+                             levels=design)
+fit.cont <- contrasts.fit(fit, cont.matrix)
+fit.cont <- eBayes(fit.cont)
+```
+
+```{r}
+top_table <- data.frame(BIOCHEMICAL = NA , logFC= NA , P.Value= NA , adj.P.Val= NA , Comp= NA)
+
+for (i in 1:length(comp)) {
+  top_table_1 <- topTable(fit.cont, coef=i, adjust="BH", n = Inf, sort.by = "P")
+  top_table_1$Comp <- comp[i]
+  top_table_1$BIOCHEMICAL <- rownames(top_table_1)
+  top_table_1 <- select(top_table_1, BIOCHEMICAL, logFC, P.Value, adj.P.Val, Comp)
+  top_table <- rbind(top_table, top_table_1)
+}
+
+top_table <- top_table[complete.cases(top_table),]
+path_table <- paste0("results/LIMMA_results_class_lipids_with_HC.csv")
+
+print(path_table)
+write.csv(top_table, file =path_table)
+
+DF_top_table <-top_table
+
+path_results <- paste0("results/LIMMA_results_class_lipids_with_HC_filt.csv")
+
+write.table(DF_top_table, file = path_results)
 ```
