@@ -77,6 +77,7 @@ LIMMA_microbiome_cocomo_2_HC.Rmd
 
 Make_table_clinical_with_microbiome.Rmd \
 COCOMO_microbiome_preprocessing.Rmd \
+COCOMO_microbiome_preprocessing_without_HC.Rmd \
 figures_microbiome_extra.Rmd \
 preparing_lEfSe_input.Rmd \
 Microbiome_DGE_family.Rmd \
