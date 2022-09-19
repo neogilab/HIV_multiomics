@@ -5,14 +5,15 @@ output: html_notebook
 
 
 
-### clean environment
+
+### enter your path to folder
 ```{r}
-rm(list=ls())
+path <- "/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics"
 ```
 
 ### set directory
 ```{r setup}
-    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+    knitr::opts_knit$set(root.dir = normalizePath(path)) 
 ```
 
 ```{r}
@@ -45,7 +46,7 @@ data$Metabolites <- rownames(data)
 ```
 
 ```{r}
-data_heatmap <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/metabolites_pathways.csv", stringsAsFactors = F)
+data_heatmap <- read.csv("processing/metabolites_pathways.csv", stringsAsFactors = F)
 data_heatmap <- data_heatmap[data_heatmap$SUPER.PATHWAY != "",]
 data_heatmap$SUPER.PATHWAY[data_heatmap$SUPER.PATHWAY == "Energy"] <- "Other"
 data_heatmap$SUPER.PATHWAY[data_heatmap$SUPER.PATHWAY == "Partially Characterized Molecules"] <- "Other"
@@ -68,7 +69,7 @@ values_heatmap <- as.factor(data_heatmap$value)
 
 ## correlations metabolites / age - gender - BMI
 ```{r}
-data_met <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/metabolomics_log2_plusHC.csv", check.names = FALSE)
+data_met <- read.csv("processing/metabolomics_log2_plusHC.csv", check.names = FALSE)
 patients <- data_met$X
 data_met <- data_met[,colnames(data_met) %in% as.vector(data$Metabolites)]
 
