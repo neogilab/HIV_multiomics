@@ -1,0 +1,530 @@
+---
+title: "Microbiome DGE"
+output: html_notebook
+---
+
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/3_layers_integration/")) 
+```
+
+```{r}
+library(phyloseq)
+library("ggplot2")
+library("scales")
+library("grid")
+library(xlsx)
+library("colorspace")
+library(vegan)
+library(reshape2)
+library(funrar)
+library(gridExtra)
+library(DESeq2)
+```
+
+```{r}
+col <- c("#6b8150", "#2273C3","#EFC144","#868686")
+col_border <- darken(col, 0.5)
+```
+
+# 1) prepare phyloseq input
+## load data
+## remove HC
+```{r}
+data_genus <- read.csv("data/microbiome_COCOMO_genus.csv")
+data_family <- read.csv("data/microbiome_COCOMO_family.csv")
+data_phylum <- read.csv("data/microbiome_COCOMO_phylum.csv")
+```
+
+```{r}
+cluster <- read.csv("processing/cluster_SNF_3_omics_3_clusters_plusHC.csv")
+cluster <- cluster[cluster$id %in% data_genus$ID,]
+cluster$cluster[is.na(cluster$cluster)] <- "Ctrl"
+cluster$X <- NULL
+names(cluster)[2] <- "X"
+```
+
+### process data
+```{r}
+data_phylum_2 <- data_phylum
+data_phylum_2 <- data_phylum_2[,c(1,2, grep("D_1", colnames(data_phylum_2)))]
+colnames(data_phylum_2)[-c(1,2)] <- gsub(".*D_1__", "",colnames(data_phylum_2)[-c(1,2)])
+colnames(data_phylum_2)[grep("uncultured", colnames(data_phylum_2))] <- "Other"
+colnames(data_phylum_2)[grep("unidentified", colnames(data_phylum_2))] <- "Other"
+colnames(data_phylum_2)[grep("metagenome", colnames(data_phylum_2))] <- "Other"
+data_phylum_2 <- data_phylum_2[,colnames(data_phylum_2) != "Other"]
+names(data_phylum_2)[1] <- "X"
+data_phylum_2$Category <- NULL
+data_phylum_2[,-1] <- make_relative(as.matrix(data_phylum_2[,-1]))
+write.csv(data_phylum_2, "processing/data_phylum_clean.csv")
+```
+
+```{r}
+data_family_2 <- data_family
+data_family_2 <- data_family_2[,c(1,2, grep("D_4", colnames(data_family_2)))]
+colnames(data_family_2)[-c(1,2)] <- gsub(".*D_4__", "",colnames(data_family_2)[-c(1,2)])
+colnames(data_family_2)[grep("uncultured", colnames(data_family_2))] <- "Other"
+colnames(data_family_2)[grep("unidentified", colnames(data_family_2))] <- "Other"
+colnames(data_family_2)[grep("metagenome", colnames(data_family_2))] <- "Other"
+data_family_2 <- data_family_2[,colnames(data_family_2) != "Other"]
+names(data_family_2)[1] <- "X"
+data_family_2$Category <- NULL
+data_family_2[,-1] <- make_relative(as.matrix(data_family_2[,-1]))
+write.csv(data_family_2, "processing/data_family_clean.csv")
+```
+
+```{r}
+data_genus_2 <- data_genus
+names(data_genus_2)[1] <- "X"
+data_genus_2$Category <- NULL
+data_genus_3 <- data_genus_2
+data_genus_2 <- data_genus_2[,c(1, grep("D_5", colnames(data_genus_2)))]
+colnames(data_genus_2)[-c(1)] <- gsub(".*D_5__", "",colnames(data_genus_2)[-c(1)])
+colnames(data_genus_2)[grep("uncultured", colnames(data_genus_2))] <- "Other"
+colnames(data_genus_2)[grep("unidentified", colnames(data_genus_2))] <- "Other"
+colnames(data_genus_2)[grep("metagenome", colnames(data_genus_2))] <- "Other"
+data_genus_2 <- data_genus_2[,colnames(data_genus_2) != "Other"]
+write.csv(data_genus_2, "processing/data_genus_clean.csv")
+data_genus_2[,-1] <- make_relative(as.matrix(data_genus_2[,-1]))
+write.csv(data_genus_2, "processing/data_genus_clean_relative_abundance.csv")
+```
+
+```{r}
+color_phylym <- c("#8b0000","#eb8c00","#f9d62e","#c9df8a","#36802d","#77ab59","#71c7ec","#189ad3","#1ebbd7","#eec1ad","#ff7f50","#e0301e","#e5e5e5", "grey", "blue", "green", "pink")
+```
+
+
+# clinical
+```{r}
+clinical <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/clinical_data_microbiome_project.csv")
+clinical <- clinical[,c(1, 8, 9)]
+```
+
+```{r}
+samples_table <- merge(cluster, clinical , by = "X")
+```
+
+
+## make taxonomy table
+```{r}
+tax_table <- colnames(data_genus)[-c(1,2)]
+names_tax <- c("Super_group", "Division", "Class", "Order", "Family", "Genus")
+
+tax_table_2 <- data.frame(matrix(rep(0,6), 1, 6))
+
+colnames(tax_table_2) <- names_tax
+
+for (i in 1:length(tax_table)) {
+    x <- strsplit(as.character(tax_table[i]), "__")
+    x[[1]][7] <- ifelse(grepl("D_5", x[[1]][6]), x[[1]][7] , ".")
+    n <- c()
+    
+    for (j in 2:length(x[[1]])) {
+        y <- x[[1]][j]
+        y <- gsub("\\.D.*", "",y)
+        m <- j-1
+        n[[m]] <- y
+    }
+    tax_table_2 <- rbind(tax_table_2, n)
+}
+tax_table_2 <- tax_table_2[-1,]
+
+for (i in 1:nrow(tax_table_2)) {
+    for (j in 1:ncol(tax_table_2)) {
+        if(grepl("uncultured",tax_table_2[i,j])){
+            print(tax_table_2[i,j])
+            tax_table_2[i,j] <- "uncultured"
+        }
+      if(grepl("metagenome",tax_table_2[i,j])){
+            print(tax_table_2[i,j])
+            tax_table_2[i,j] <- "uncultured"
+      }
+      if(grepl("unidentified",tax_table_2[i,j])){
+            print(tax_table_2[i,j])
+            tax_table_2[i,j] <- "uncultured"
+        }
+    }
+}
+```
+
+```{r}
+data_genus$X <- NULL
+otu_mat <- as.matrix(data_genus[,-c(1,2)])
+rownames(otu_mat) <- data_genus$ID
+colnames(otu_mat) <- paste0("Otu",1:ncol(otu_mat))
+write.csv(otu_mat, "processing/data_count_microbiome.csv")
+
+tax_mat <- tax_table_2
+rownames(tax_mat) <- paste0("Otu",1:nrow(tax_mat))
+tax_mat <- as.matrix(tax_mat)
+```
+
+```{r}
+samples_table$Transm_mode <- as.factor(samples_table$Transm_mode)
+samples_table$Transm_mode[is.na(samples_table$Transm_mode) | samples_table$Transm_mode == 7] <- 8
+samples_table$Transm_mode <- factor(samples_table$Transm_mode)
+rownames(samples_table) <- samples_table$X
+samples_table$X <- NULL
+```
+
+```{r}
+otu_mat <- otu_mat[rownames(otu_mat) %in% rownames(samples_table),]
+```
+
+```{r}
+OTU = otu_table(t(otu_mat), taxa_are_rows = TRUE)
+TAX = tax_table(tax_mat)
+samples = sample_data(samples_table)
+```
+
+```{r}
+carbom <- phyloseq(OTU, TAX, samples)
+carbom
+```
+
+```{r}
+saveRDS(carbom, "processing/model_phyloseq_filted_HIV.rds")
+```
+
+```{r}
+name_ana <- "microbiome_project"
+```
+
+## microbiome = mann withney at family, phylum and genus
+```{r}
+# Close and re-open R
+GPr <- readRDS("processing/model_phyloseq_filted_HIV.rds")
+
+diagdds = phyloseq_to_deseq2(GPr, ~ 0 + cluster)
+# calculate geometric means prior to estimate size factors
+gm_mean = function(x, na.rm=TRUE){
+  exp(sum(log(x[x > 0]), na.rm=na.rm) / length(x))
+}
+
+geoMeans = apply(counts(diagdds), 1, gm_mean)
+
+diagdds = estimateSizeFactors(diagdds, geoMeans = geoMeans)
+diagdds = DESeq(diagdds, fitType="local")
+```
+
+```{r}
+resultsNames(diagdds)
+alpha = 0.05
+```
+
+```{r}
+res <- results(diagdds, contrast=c("cluster", "1", "2"), cooksCutoff=FALSE, independentFiltering=FALSE)
+res = res[order(res$padj, na.last=NA), ]
+alpha = 0.05
+sigtab = res[(res$padj < alpha), ]
+sigtab = cbind(as(sigtab, "data.frame"), as(tax_table(GPr)[rownames(sigtab), ], "matrix"))
+head(sigtab)
+
+y <- rownames(sigtab)
+x1 <- select(sigtab,  Division, Class, Order, Family, Genus, log2FoldChange, padj)
+
+write.csv(sigtab, "results/microbiome_results_grp1_grp2.csv")
+write.table(rownames(sigtab), "results/microbiome_results_grp1_grp2_GSEA.txt", quote = FALSE)
+
+res <- results(diagdds, contrast=c("cluster", "1", "3"), cooksCutoff=FALSE, independentFiltering=FALSE)
+res = res[order(res$padj, na.last=NA), ]
+alpha = 0.05
+sigtab = res[(res$padj < alpha), ]
+sigtab = cbind(as(sigtab, "data.frame"), as(tax_table(GPr)[rownames(sigtab), ], "matrix"))
+head(sigtab)
+
+y <- rownames(sigtab)
+y1 <- select(sigtab,  Division, Class, Order, Family, Genus, log2FoldChange, padj)
+
+write.csv(sigtab, "results/microbiome_results_grp1_grp3.csv")
+write.table(rownames(sigtab), "results/microbiome_results_grp1_grp3_GSEA.txt", quote = FALSE)
+
+res <- results(diagdds, contrast=c("cluster", "2", "3"), cooksCutoff=FALSE, independentFiltering=FALSE)
+res = res[order(res$padj, na.last=NA), ]
+#alpha = 1
+#sigtab = res[(res$padj < alpha), ]
+#sigtab = cbind(as(sigtab, "data.frame"), as(tax_table(GPr)[rownames(sigtab), ], "matrix"))
+#head(sigtab)
+
+#y <- rownames(sigtab)
+#z1 <- select(sigtab,  Division, Class, Order, Family, Genus, log2FoldChange, padj)
+
+#write.csv(sigtab, "results/microbiome_results_grp2_grp3.csv")
+#write.table(rownames(sigtab), "results/microbiome_results_grp2_grp3_GSEA.txt", quote = FALSE)
+```
+
+```{r}
+x1$otu <- rownames(x1)
+x1$comp <- "G1G2"
+y1$otu <- rownames(y1)
+y1$comp <- "G1G3"
+table_otu <- rbind(x1, y1)
+table_not_corrected <- table_otu
+```
+
+```{r}
+library(nVennR)
+
+a <- list(table_otu$otu[table_otu$comp == "G1G2"])
+b <- list(table_otu$otu[table_otu$comp == "G1G3"])
+c <- list(table_otu$otu[table_otu$comp == "G2G3"])
+```
+
+```{r}
+# Load library
+library(VennDiagram)
+ # Prepare a palette of 3 colors with R colorbrewer:
+library(RColorBrewer)
+myCol <- brewer.pal(3, "Pastel2")
+
+# Chart
+venn.diagram(x = list(a[[1]], b[[1]], c[[1]]), filename = "results/figures/ven_microbiome", category.names = c("SNF-2vsSNF-1" , "SNF-3vsSNF-1" , " SNF-3vsSNF-2"), fill = myCol, euler.d = TRUE,
+	cex = 1.5,
+	cat.cex = 0.8)
+```
+
+
+```{r}
+name_ana <- "microbiome_project"
+```
+
+## microbiome = mann withney at family, phylum and genus
+```{r}
+# Close and re-open R
+GPr <- readRDS("processing/model_phyloseq_filted_HIV.rds")
+
+diagdds = phyloseq_to_deseq2(GPr, ~ 0 + cluster + Transm_mode + CD4)
+# calculate geometric means prior to estimate size factors
+gm_mean = function(x, na.rm=TRUE){
+  exp(sum(log(x[x > 0]), na.rm=na.rm) / length(x))
+}
+
+geoMeans = apply(counts(diagdds), 1, gm_mean)
+
+diagdds = estimateSizeFactors(diagdds, geoMeans = geoMeans)
+diagdds = DESeq(diagdds, fitType="local")
+```
+
+```{r}
+resultsNames(diagdds)
+alpha = 0.05
+```
+
+```{r}
+res <- results(diagdds, contrast=c("cluster", "1", "2"), cooksCutoff=FALSE, independentFiltering=FALSE)
+res = res[order(res$padj, na.last=NA), ]
+alpha = 0.05
+sigtab = res[(res$padj < alpha), ]
+sigtab = cbind(as(sigtab, "data.frame"), as(tax_table(GPr)[rownames(sigtab), ], "matrix"))
+head(sigtab)
+
+y <- rownames(sigtab)
+x1 <- select(sigtab,  Division, Class, Order, Family, Genus, log2FoldChange, padj)
+
+write.csv(sigtab, "results/microbiome_results_grp1_grp2_corrected.csv")
+write.table(rownames(sigtab), "results/microbiome_results_grp1_grp2_GSEA_corrected.txt", quote = FALSE)
+
+res <- results(diagdds, contrast=c("cluster", "1", "3"), cooksCutoff=FALSE, independentFiltering=FALSE)
+res = res[order(res$padj, na.last=NA), ]
+alpha = 0.05
+sigtab = res[(res$padj < alpha), ]
+sigtab = cbind(as(sigtab, "data.frame"), as(tax_table(GPr)[rownames(sigtab), ], "matrix"))
+head(sigtab)
+
+y <- rownames(sigtab)
+y1 <- select(sigtab,  Division, Class, Order, Family, Genus, log2FoldChange, padj)
+
+write.csv(sigtab, "results/microbiome_results_grp1_grp3_corrected.csv")
+write.table(rownames(sigtab), "results/microbiome_results_grp1_grp3_GSEA_corrected.txt", quote = FALSE)
+
+res <- results(diagdds, contrast=c("cluster", "2", "3"), cooksCutoff=FALSE, independentFiltering=FALSE)
+res = res[order(res$padj, na.last=NA), ]
+alpha = 0.05
+sigtab = res[(res$padj < alpha), ]
+sigtab = cbind(as(sigtab, "data.frame"), as(tax_table(GPr)[rownames(sigtab), ], "matrix"))
+head(sigtab)
+
+y <- rownames(sigtab)
+z1 <- select(sigtab,  Division, Class, Order, Family, Genus, log2FoldChange, padj)
+
+write.csv(sigtab, "results/microbiome_results_grp2_grp3_corrected.csv")
+write.table(rownames(sigtab), "results/microbiome_results_grp2_grp3_GSEA_corrected.txt", quote = FALSE)
+```
+
+```{r}
+x1$otu <- rownames(x1)
+x1$comp <- "G1G2"
+y1$otu <- rownames(y1)
+y1$comp <- "G1G3"
+z1$otu <- rownames(z1)
+z1$comp <- "G2G3"
+table_otu <- rbind(x1, y1, z1)
+
+table_corrected <- table_otu
+```
+
+```{r}
+library(nVennR)
+
+a <- list(table_otu$otu[table_otu$comp == "G1G2"])
+b <- list(table_otu$otu[table_otu$comp == "G1G3"])
+c <- list(table_otu$otu[table_otu$comp == "G2G3"])
+```
+
+```{r}
+# Load library
+library(VennDiagram)
+ # Prepare a palette of 3 colors with R colorbrewer:
+library(RColorBrewer)
+myCol <- brewer.pal(3, "Pastel2")
+
+# Chart
+venn.diagram(x = list(a[[1]], b[[1]], c[[1]]), filename = "results/figures/ven_microbiome_corrected", category.names = c("SNF-2vsSNF-1" , "SNF-3vsSNF-1" , " SNF-3vsSNF-2"), fill = myCol, euler.d = TRUE,
+	cex = 1.5,
+	cat.cex = 0.8)
+```
+
+```{r}
+x1 <- select(x1, otu, log2FoldChange, padj)
+names(x1)[2:3] <- c("LFC_G1WT","FDR_G1WT")
+y1 <- select(y1, otu, log2FoldChange, padj)
+names(y1)[2:3] <- c("LFC_G2WT","FDR_G2WT")
+z1 <- select(z1, otu, log2FoldChange, padj)
+names(z1)[2:3] <- c("LFC_G3WT","FDR_G3WT")
+```
+
+```{r}
+table_lfc <- merge(x1, y1, by = "otu", all.x = TRUE, all.y = TRUE)
+table_lfc <- merge(table_lfc, z1, by = "otu", all.x = TRUE, all.y = TRUE)
+table_lfc$type <- "Otu"
+```
+
+```{r}
+write.csv(table_lfc, "processing/microbiome_comp_HC.csv", quote = FALSE, row.names = F)
+```
+
+## test alpha diversity
+
+```{r}
+data <- read.csv("/home/flomik/Desktop/Code-PHD/3_layers_integration/processing/table_alpha_diversity.csv")
+data$matrix.108..108..1. <- NULL
+
+data <- merge(cluster, data, by = "X")
+data <- merge(clinical, data, by = "X")
+```
+
+```{r}
+group <- as.factor(data$cluster)
+design <- model.matrix( ~ 0 + group)
+```
+
+```{r}
+fit <- lmFit(t(data[,-c(1:4)]), design)
+```
+
+```{r}
+comp <- c("group3-group1", "group2-group1", "group3-group2")
+```
+
+```{r}
+cont.matrix <- makeContrasts(
+                             C3_C1 = comp[1],
+                             C2_C1 = comp[2],
+                             C2_C3 = comp[3],
+                             levels=design)
+fit.cont <- contrasts.fit(fit, cont.matrix)
+fit.cont <- eBayes(fit.cont)
+```
+
+```{r}
+top_table <- data.frame(BIOCHEMICAL = NA , logFC= NA , P.Value= NA , adj.P.Val= NA , Comp= NA)
+
+for (i in 1:length(comp)) {
+  top_table_1 <- topTable(fit.cont, coef=i, adjust="BH", n = Inf, sort.by = "P")
+  top_table_1$Comp <- comp[i]
+  top_table_1$BIOCHEMICAL <- rownames(top_table_1)
+  top_table_1 <- select(top_table_1, BIOCHEMICAL, logFC, P.Value, adj.P.Val, Comp)
+  top_table <- rbind(top_table, top_table_1)
+}
+
+top_table <- top_table[complete.cases(top_table),]
+path_table <- paste0("results/LIMMA_results_alpha_diversity_with_HC.csv")
+
+print(path_table)
+write.csv(top_table, file =path_table)
+
+DF_top_table <-top_table[top_table$adj.P.Val< 0.05,]
+
+path_results <- paste0("results/LIMMA_results_alpha_diversity_with_HC_filt.csv")
+
+write.table(DF_top_table, file = path_results)
+
+table(DF_top_table$Comp)
+```
+se.ACE
+ACE
+Observed
+Fisher
+Chao1
+
+```{r}
+data <- data[data$cluster != "Ctrl",]
+```
+
+```{r}
+group <- as.factor(data$cluster)
+data$Transm_mode[is.na(data$Transm_mode) | data$Transm_mode  == 7] <- "8"
+trans <- as.factor(data$Transm_mode)
+cd4 <- data$CD4
+design <- model.matrix( ~ 0 + group + cd4 + trans)
+```
+
+```{r}
+fit <- lmFit(t(data[,-c(1:4)]), design)
+```
+
+```{r}
+comp <- c( "group3-group1", "group2-group1", "group3-group2")
+```
+
+```{r}
+cont.matrix <- makeContrasts(
+                             C3_C1 = comp[1],
+                             C2_C1 = comp[2],
+                             C2_C3 = comp[3],
+                             levels=design)
+fit.cont <- contrasts.fit(fit, cont.matrix)
+fit.cont <- eBayes(fit.cont)
+```
+
+```{r}
+top_table <- data.frame(BIOCHEMICAL = NA , logFC= NA , P.Value= NA , adj.P.Val= NA , Comp= NA)
+
+for (i in 1:length(comp)) {
+  top_table_1 <- topTable(fit.cont, coef=i, adjust="BH", n = Inf, sort.by = "P")
+  top_table_1$Comp <- comp[i]
+  top_table_1$BIOCHEMICAL <- rownames(top_table_1)
+  top_table_1 <- select(top_table_1, BIOCHEMICAL, logFC, P.Value, adj.P.Val, Comp)
+  top_table <- rbind(top_table, top_table_1)
+}
+
+top_table <- top_table[complete.cases(top_table),]
+path_table <- paste0("results/LIMMA_results_alpha_diversity_with_HC_corrected.csv")
+
+print(path_table)
+write.csv(top_table, file =path_table)
+
+DF_top_table <-top_table[top_table$adj.P.Val< 0.05,]
+
+path_results <- paste0("results/LIMMA_results_alpha_diversity_with_HC_corrected_filt.csv")
+
+write.table(DF_top_table, file = path_results)
+
+table(DF_top_table$Comp)
+```

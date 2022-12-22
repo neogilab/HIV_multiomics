@@ -1,0 +1,210 @@
+---
+title: "KW metabolomics"
+output: html_notebook
+---
+
+### enter your path to folder
+```{r}
+path <- "/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics"
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath(path)) 
+```
+
+```{r}
+library(gridExtra)
+library(ggpubr)
+library(xlsx)
+library(gplots)
+library(ComplexHeatmap)
+library(circlize)
+library(limma)
+library("colorspace")
+library(ggplot2)
+library(dplyr)
+library(scales)
+```
+
+```{r}
+col <- c("#6b8150", "#2273C3","#EFC144","#868686")
+col_border <- darken(col, 0.5)
+```
+
+
+```{r}
+cluster <- read.csv("processing/cluster_SNF_3_omics_3_clusters.csv")
+cluster$X <- NULL
+names(cluster)[2] <- "X"
+```
+
+```{r}
+clinical <- read.csv("processing/clinical_data_microbiome_project.csv")
+clinical <- clinical[,c(1, 8, 9)]
+```
+
+## load data
+
+```{r}
+data <- read.csv("data/clp_um_new_data.csv", header = TRUE, check.names=FALSE)
+names(data)[1] <- "X"
+condition <- data$Group
+#data$Group <- NULL
+```
+
+```{r}
+data <- merge(cluster, data, by = "X", all.y = TRUE)
+data$cluster <- ifelse(data$Group == "Ctrl", "Ctrl", data$cluster)
+new_cluster <- data.frame(cluster = data$cluster, id = data$X)
+
+rownames(data) <- data$X
+data$X <- NULL
+data$Group <- NULL
+data <- data[!is.na(data$cluster),]
+data$cluster <- factor(data$cluster, levels = c("Ctrl", 1, 2, 3))
+```
+
+## distribution-1
+```{r}
+hist(as.matrix(data[,-1]))
+
+data[,-1] <- log2(data[,-1])
+```
+
+
+## boxplot
+```{r}
+list_box <- list()
+x <- 1
+for (i in 2:ncol(data)) {
+  a <- ggplot(data, aes(x = cluster, y = data[,i], fill = cluster, color = cluster)) + 
+    geom_boxplot(position=position_dodge(1), size = 0.5, alpha =0.8, outlier.shape = NA)+ theme(axis.title.x = element_text(size=16, face = "bold",color="black"),
+          axis.title.y = element_text(size=16, face = "bold",color="black"),
+          axis.text = element_text(color="black",size=16, face = "bold"),
+          axis.text.x =element_text(color="black",size=16, face = "bold"),
+          panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          strip.text.x = element_text(size = 9,color="black"),
+          legend.position="bottom",
+          panel.background = element_rect(fill = "white", colour = "white", size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype ='solid', colour = "grey"),
+          panel.grid.minor = element_line(size = 0.25, linetype = 'solid', colour = "grey"),
+          plot.title = element_text(hjust = 0.5, size = 20, face = "bold", vjust=2),
+          legend.background=element_rect(fill = alpha("white", 0)))+ 
+    labs(x="Cluster", y = paste0(names(data)[i], "")) + 
+    geom_jitter(shape=16, size=2, color="black", position=position_jitter(0.02))+ scale_fill_manual(values=col)+ scale_color_manual(values=col_border)
+  list_box[[x]] <- a
+  x = x + 1
+  ggsave(paste0("results/figures/boxplots/lipids_", colnames(data)[i], ".pdf"), height = 4, width = 3)
+}
+```
+
+```{r}
+group <- as.factor(data$cluster)
+design <- model.matrix( ~ 0 + group)
+```
+```{r}
+fit <- lmFit(t(data[,-c(1)]), design)
+```
+
+```{r}
+comp <- c("group1-groupCtrl", "group2-groupCtrl", "group3-groupCtrl", "group3-group1", "group2-group1", "group3-group2")
+```
+
+```{r}
+cont.matrix <- makeContrasts(Ctrl_C1 = comp[1],
+                             Ctrl_C2 = comp[2],
+                             Ctrl_C3 = comp[3],
+                             C3_C1 = comp[4],
+                             C2_C1 = comp[5],
+                             C2_C3 = comp[6],
+                             levels=design)
+fit.cont <- contrasts.fit(fit, cont.matrix)
+fit.cont <- eBayes(fit.cont)
+```
+
+```{r}
+top_table <- data.frame(BIOCHEMICAL = NA , logFC= NA , P.Value= NA , adj.P.Val= NA , Comp= NA)
+
+for (i in 1:length(comp)) {
+  top_table_1 <- topTable(fit.cont, coef=i, adjust="BH", n = Inf, sort.by = "P")
+  top_table_1$Comp <- comp[i]
+  top_table_1$BIOCHEMICAL <- rownames(top_table_1)
+  top_table_1 <- select(top_table_1, BIOCHEMICAL, logFC, P.Value, adj.P.Val, Comp)
+  top_table <- rbind(top_table, top_table_1)
+}
+
+top_table <- top_table[complete.cases(top_table),]
+path_table <- paste0("results/LIMMA_results_class_lipids_with_HC.csv")
+
+print(path_table)
+write.csv(top_table, file =path_table)
+
+DF_top_table <-top_table[top_table$adj.P.Val< 0.05,]
+
+path_results <- paste0("results/LIMMA_results_class_lipids_with_HC_filt.csv")
+
+write.table(DF_top_table, file = path_results)
+
+table(DF_top_table$Comp)
+```
+
+```{r}
+data <- data[data$cluster != "Ctrl",]
+data$X <- rownames(data)
+
+data <- merge(clinical, data , by = "X")
+```
+
+```{r}
+group <- as.factor(data$cluster)
+data$Transm_mode[is.na(data$Transm_mode) | data$Transm_mode  == 7] <- "8"
+trans <- as.factor(data$Transm_mode)
+cd4 <- data$CD4
+design <- model.matrix( ~ 0 + group + cd4 + trans)
+```
+
+```{r}
+fit <- lmFit(t(data[,-c(1:4)]), design)
+```
+
+```{r}
+comp <- c( "group3-group1", "group2-group1", "group3-group2")
+```
+
+```{r}
+cont.matrix <- makeContrasts(
+                             C3_C1 = comp[1],
+                             C2_C1 = comp[2],
+                             C2_C3 = comp[3],
+                             levels=design)
+fit.cont <- contrasts.fit(fit, cont.matrix)
+fit.cont <- eBayes(fit.cont)
+```
+
+```{r}
+top_table <- data.frame(BIOCHEMICAL = NA , logFC= NA , P.Value= NA , adj.P.Val= NA , Comp= NA)
+
+for (i in 1:length(comp)) {
+  top_table_1 <- topTable(fit.cont, coef=i, adjust="BH", n = Inf, sort.by = "P")
+  top_table_1$Comp <- comp[i]
+  top_table_1$BIOCHEMICAL <- rownames(top_table_1)
+  top_table_1 <- select(top_table_1, BIOCHEMICAL, logFC, P.Value, adj.P.Val, Comp)
+  top_table <- rbind(top_table, top_table_1)
+}
+
+top_table <- top_table[complete.cases(top_table),]
+path_table <- paste0("results/LIMMA_results_class_lipids_with_HC_corrected.csv")
+
+print(path_table)
+write.csv(top_table, file =path_table)
+
+DF_top_table <-top_table[top_table$adj.P.Val< 0.05,]
+
+path_results <- paste0("results/LIMMA_results_class_lipids_with_HC_corrected_filt.csv")
+
+write.table(DF_top_table, file = path_results)
+
+table(DF_top_table$Comp)
+```

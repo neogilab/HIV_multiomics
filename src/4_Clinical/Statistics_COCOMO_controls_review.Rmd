@@ -1,0 +1,214 @@
+---
+title: "Statistics"
+output: html_notebook
+---
+
+
+### enter your path to folder
+```{r}
+path <- "/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics"
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath(path)) 
+```
+
+
+
+```{r}
+comorbidities <- read.csv("data/Comorbitities_Marco.csv", sep = ",")
+comorbidities$X <- NULL
+```
+
+
+```{r}
+library(summarize)
+library(dplyr)
+library(xlsx)
+```
+
+```{r}
+clinical <- read.csv("processing/clinical_data_clean_for_regression_models.csv")
+clinical <- clinical[,colnames(clinical) %in% c("X", "AGE", "GENDER", "BMI")]
+clinical <- clinical[complete.cases(clinical),]
+```
+
+```{r}
+data <- read.xlsx("data/clinical/COCOMO_Master File_SK.xlsx", 1)
+data <- data[data$HIV_Status == "Ctrl",]
+data <- data[,colnames(data) %in% c("COCOMO_ID", "AGE", "GENDER", "BMI")]
+data <- data[complete.cases(data),]
+names(clinical)[1] <- "COCOMO_ID"
+```
+
+```{r}
+data <- rbind(clinical, data)
+```
+
+```{r}
+cluster <- read.csv("processing/cluster_SNF_3_omics_3_clusters_plusHC.csv")
+cluster$X <- NULL
+names(cluster)[2] <- "COCOMO_ID"
+cluster <- cluster[!is.na(cluster$cluster),]
+
+data <- merge(data, cluster, by ="COCOMO_ID", all.y = TRUE)
+```
+
+```{r}
+table(data$cluster)
+```
+
+```{r}
+data_numeric <- data
+print(colnames(data_numeric)[2])
+x <- pairwise.wilcox.test(data_numeric[,2], data_numeric$cluster, p.adj = "none")
+x2 <- data.frame(x$p.value)
+colnames(x2) <- gsub("X", "", colnames(x2))
+colnames(x2)
+x
+write.csv(x2, "results/individual_characteristics_pairwise.wilcox.test_Age.csv")
+
+print(colnames(data_numeric)[3])
+x <- pairwise.wilcox.test(data_numeric[,3], data_numeric$cluster, p.adj = "none")
+x2 <- data.frame(x$p.value)
+colnames(x2) <- gsub("X", "", colnames(x2))
+colnames(x2)
+x
+write.csv(x2, "results/individual_characteristics_pairwise.wilcox.test_BMI.csv")
+```
+
+```{r}
+pairwise.chisq.test <- function(x, g, p.adjust.method = p.adjust.methods, ...) {
+  DNAME <- paste(deparse(substitute(x)), "and", deparse(substitute(g)))
+  g <- factor(g)
+  p.adjust.method <- match.arg(p.adjust.method)
+
+  compare.levels <- function(i, j) {
+    xi <- x[as.integer(g) == i]
+    xj <- x[as.integer(g) == j]
+    m1 <- table(xi)
+    m2 <- table(xj)
+    m <- rbind(m1, m2)
+    print(m)
+    chisq.test(m)$p.value
+  }
+  PVAL <- pairwise.table(compare.levels, levels(g), p.adjust.method)
+  ans <- list(method = "chi-squared test", data.name = DNAME, p.value = PVAL, 
+              p.adjust.method = p.adjust.method)
+  class(ans) <- "pairwise.htest"
+  ans
+}
+```
+
+
+```{r}
+y <- data.frame(table(data_numeric$GENDER, data_numeric$cluster))
+
+x <- pairwise.chisq.test(data_numeric$GENDER, data_numeric$cluster, p.adjust.method = "none")
+x2 <- data.frame(x$p.value)
+x2
+write.csv(x2, "results/individual_characteristics_pairwise.chisq.test_GENDER.csv")
+write.csv(y, "results/individual_characteristics_table_GENDER.csv")
+```
+
+
+```{r}
+m2 <- table(data$GENDER, data$cluster)
+m2
+```
+
+```{r}
+fisher.test(m2)$p.value
+```
+
+```{r}
+table_numeric <- data.frame(parameter = rep(names(data)[c(2,3)], each = 4), cluster = rep(c(1, 2, 3, "Ctrl"), length(names(data)[c(2,3)])), Mean_SD = NA, pval_anova = NA)
+j = 1
+
+
+
+
+for (i in c(2,3)){
+  c1 <- data_numeric[data_numeric$cluster == 1,i]
+  c2 <- data_numeric[data_numeric$cluster == 2,i]
+  c3 <- data_numeric[data_numeric$cluster == 3,i]
+  c4 <- data_numeric[data_numeric$cluster == "Ctrl",i]
+  x <- paste0(round(medIQR(c1)[[1]], 2), "(", round(medIQR(c1)[[2]], 2), "-", round(medIQR(c1)[[3]], 2), ")")
+  y <- paste0(round(medIQR(c2)[[1]], 2), "(", round(medIQR(c2)[[2]], 2), "-", round(medIQR(c2)[[3]], 2), ")")
+  z <- paste0(round(medIQR(c3)[[1]], 2), "(", round(medIQR(c3)[[2]], 2), "-", round(medIQR(c3)[[3]], 2), ")")
+  a <- paste0(round(medIQR(c4)[[1]], 2), "(", round(medIQR(c4)[[2]], 2), "-", round(medIQR(c4)[[3]], 2), ")")
+  print(IQR(c1))
+  print(IQR(c4))
+  table_numeric[c(j, j+1, j+2, j +3), 3] <- c(x, y , z, a)
+  res.aov <- kruskal.test(data_numeric[ ,i] ~ cluster, data = data_numeric)
+  table_numeric[j, 4] <- res.aov$p.value
+  j = j + 4
+}
+
+
+c4 <- data_numeric[data_numeric$cluster == "Ctrl", 3]
+mean(c4) + sd(c4)
+mean(c4) - sd(c4)
+
+
+
+table_numeric$X <- paste0("C", table_numeric$cluster, "_", table_numeric$parameter)
+
+#table_numeric <-  merge(table_numeric, reg, by = "X")
+
+table_numeric$X <- NULL
+
+write.xlsx(table_numeric, "results/COCOMO_3_layers_individual_characteristics.xlsx")
+```
+
+```{r}
+data$cluster <- as.vector(data$cluster)
+data$cluster[data$cluster != "Ctrl"] <- "HIV"
+```
+
+```{r}
+m2 <- table(data$GENDER, data$cluster)
+m2
+```
+
+```{r}
+fisher.test(m2)$p.value
+```
+
+```{r}
+data_numeric <- data
+table_numeric <- data.frame(parameter = rep(names(data)[c(2,3)], each = 2), cluster = rep(c("HIV", "Ctrl"), length(names(data)[c(2,3)])), Mean_SD = NA, pval_anova = NA)
+j = 1
+
+
+
+
+for (i in c(2,3)){
+  c1 <- data_numeric[data_numeric$cluster == "HIV",i]
+  c4 <- data_numeric[data_numeric$cluster == "Ctrl",i]
+  x <- paste0(round(medIQR(c1)[[1]], 2), "(", round(medIQR(c1)[[2]], 2), "-", round(medIQR(c1)[[3]], 2), ")")
+  a <- paste0(round(medIQR(c4)[[1]], 2), "(", round(medIQR(c4)[[2]], 2), "-", round(medIQR(c4)[[3]], 2), ")")
+  print(IQR(c1))
+  print(IQR(c4))
+  table_numeric[c(j, j+1), 3] <- c(x, a)
+  res.aov <- kruskal.test(data_numeric[ ,i] ~ cluster, data = data_numeric)
+  table_numeric[j, 4] <- res.aov$p.value
+  j = j + 2
+}
+
+
+c4 <- data_numeric[data_numeric$cluster == "Ctrl", 3]
+mean(c4) + sd(c4)
+mean(c4) - sd(c4)
+
+
+
+table_numeric$X <- paste0("C", table_numeric$cluster, "_", table_numeric$parameter)
+
+#table_numeric <-  merge(table_numeric, reg, by = "X")
+
+table_numeric$X <- NULL
+
+write.xlsx(table_numeric, "results/COCOMO_3_layers_individual_characteristics.xlsx")
+```

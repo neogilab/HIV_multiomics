@@ -1,0 +1,323 @@
+---
+title: "Microbiome comparison clusters"
+output: html_notebook
+---
+
+### clean environment
+```{r}
+rm(list=ls())
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("~/Desktop/Code-PHD/COCOMO_txn/")) 
+```
+
+```{r}
+library(vegan)
+library(ggplot2)
+library(dplyr)
+library(xlsx)
+library(funrar)
+```
+
+
+
+## extract microbiome data
+```{r}
+data_genus <- read.xlsx("data/microbiome/COCOMO-request.SHH.withfamilyandphylum.xlsx", 2)
+write.csv(data_genus, "data/microbiome/microbiome_COCOMO_genus.csv", row.names = FALSE)
+
+data_family <- read.xlsx("data/microbiome/COCOMO-request.SHH.withfamilyandphylum.xlsx", 4)
+write.csv(data_family, "data/microbiome/microbiome_COCOMO_family.csv", row.names = FALSE)
+
+data_phylum <- read.xlsx("data/microbiome/COCOMO-request.SHH.withfamilyandphylum.xlsx", 6)
+write.csv(data_phylum, "data/microbiome/microbiome_COCOMO_phylum.csv", row.names = FALSE)
+```
+
+
+```{r}
+data_genus <- read.csv("data/microbiome/microbiome_COCOMO_genus.csv")
+data_family <- read.csv("data/microbiome/microbiome_COCOMO_family.csv")
+data_phylum <- read.csv("data/microbiome/microbiome_COCOMO_phylum.csv")
+```
+
+```{r}
+clinical <- read.csv("processing/clinical_data_clean_with_clusters_and_categories.csv")
+clinical$X.1 <- NULL
+names(clinical)[2] <- "COCOMO_ID"
+
+cluster <- clinical[,c(2,3)]
+names(cluster)[1] <- "X"
+```
+
+### process data
+```{r}
+data_phylum_2 <- data_phylum
+data_phylum_2 <- data_phylum_2[,c(1,2, grep("D_1", colnames(data_phylum_2)))]
+colnames(data_phylum_2)[-c(1,2)] <- gsub(".*D_1__", "",colnames(data_phylum_2)[-c(1,2)])
+colnames(data_phylum_2)[grep("uncultured", colnames(data_phylum_2))] <- "Other"
+colnames(data_phylum_2)[grep("unidentified", colnames(data_phylum_2))] <- "Other"
+colnames(data_phylum_2)[grep("metagenome", colnames(data_phylum_2))] <- "Other"
+data_phylum_2 <- data_phylum_2[,colnames(data_phylum_2) != "Other"]
+names(data_phylum_2)[1] <- "X"
+data_phylum_2$Category <- NULL
+data_phylum_2[,-1] <- make_relative(as.matrix(data_phylum_2[,-1]))
+write.csv(data_phylum_2, "processing/data_phylum_clean.csv")
+```
+
+```{r}
+data_family_2 <- data_family
+data_family_2 <- data_family_2[,c(1,2, grep("D_4", colnames(data_family_2)))]
+colnames(data_family_2)[-c(1,2)] <- gsub(".*D_4__", "",colnames(data_family_2)[-c(1,2)])
+colnames(data_family_2)[grep("uncultured", colnames(data_family_2))] <- "Other"
+colnames(data_family_2)[grep("unidentified", colnames(data_family_2))] <- "Other"
+colnames(data_family_2)[grep("metagenome", colnames(data_family_2))] <- "Other"
+data_family_2 <- data_family_2[,colnames(data_family_2) != "Other"]
+names(data_family_2)[1] <- "X"
+data_family_2$Category <- NULL
+data_family_2[,-1] <- make_relative(as.matrix(data_family_2[,-1]))
+write.csv(data_family_2, "processing/data_family_clean.csv")
+```
+
+```{r}
+data_genus_2 <- data_genus
+names(data_genus_2)[1] <- "X"
+data_genus_2$Category <- NULL
+data_genus_3 <- data_genus_2
+data_genus_2 <- data_genus_2[,c(1, grep("D_5", colnames(data_genus_2)))]
+colnames(data_genus_2)[-c(1)] <- gsub(".*D_5__", "",colnames(data_genus_2)[-c(1)])
+colnames(data_genus_2)[grep("uncultured", colnames(data_genus_2))] <- "Other"
+colnames(data_genus_2)[grep("unidentified", colnames(data_genus_2))] <- "Other"
+colnames(data_genus_2)[grep("metagenome", colnames(data_genus_2))] <- "Other"
+data_genus_2 <- data_genus_2[,colnames(data_genus_2) != "Other"]
+write.csv(data_genus_2, "processing/data_genus_clean.csv")
+data_genus_2[,-1] <- make_relative(as.matrix(data_genus_2[,-1]))
+write.csv(data_genus_2, "processing/data_genus_clean_relative_abundance.csv")
+```
+
+
+## load data
+```{r}
+phylum <- read.csv("processing/data_phylum_clean.csv")
+phylum_data <- merge(cluster, phylum, by = "X")
+phylum_data$X.1 <- NULL
+phylum_data_2 <- phylum_data
+phylum_data$X <- NULL
+```
+
+```{r}
+dist <- vegdist(phylum_data[,-1])
+anova(betadisper(dist, phylum_data$cluster))
+```
+```{r}
+permutest(betadisper(dist, phylum_data$cluster), pairwise = TRUE)
+```
+
+```{r}
+permanova <- adonis(phylum_data[,-1] ~ phylum_data$cluster, method = "euclidean", permutations = 999)
+```
+
+```{r}
+pairwise.adonis <- function(x,factors, sim.method, p.adjust.m){
+  coeff <- list()
+  co = as.matrix(combn(unique(factors),2))
+  pairs = c()
+  F.Model =c()
+  R2 = c()
+  p.value = c()
+  for(elem in 1:ncol(co)){
+    data <- x[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem])),]
+    group <- factors[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem]))] 
+    ## test homogeneity
+    dist <- vegdist(data)
+    print(anova(betadisper(dist, group)))
+
+    ad = adonis(x[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem])),] ~ factors[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem]))] ,
+                permutations = 9999, method =sim.method);
+    pairs = c(pairs,paste(co[1,elem],'vs',co[2,elem]));
+    F.Model =c(F.Model,ad$aov.tab[1,4]);
+    R2 = c(R2,ad$aov.tab[1,5]);
+    p.value = c(p.value,ad$aov.tab[1,6])
+    coeff[[elem]] = coefficients(ad)["factors[factors %in% c(as.character(co[1, elem]), as.character(co[2, elem]))]1",]
+ }
+ write.csv(coeff[[1]], "processing/coefficient_permanova_group_2_vs_group_1.csv")
+ p.adjusted = p.adjust(p.value,method=p.adjust.m)
+ pairw.res = data.frame(pairs,F.Model,R2,p.value,p.adjusted)
+ return(pairw.res)
+}
+
+PW.Adonis=pairwise.adonis(phylum_data[,-1],phylum_data$cluster,sim.method="bray",p.adjust.m = "bonferroni")
+
+write.table(PW.Adonis,"results/Adonis-Results_phylum.csv",sep=",")
+```
+```{r}
+col <- c("#E69F00", "#56B4E9")
+```
+
+```{r}
+coef <- read.csv("processing/coefficient_permanova_group_2_vs_group_1.csv")
+
+pdf("results/figures/barplot_coefficients_permanova_group1_vs_group2_phylum_NON_SIGN.pdf", height = 3, width = 6)
+top.coef <- coef[rev(order(abs(coef$x))),]
+top.coef$sign <- ifelse(top.coef$x < 0, "neg", "pos")
+top.coef <- top.coef[order(top.coef$x),]
+top.coef$X <- factor(top.coef$X, levels = top.coef$X)
+par(mar = c(3, 14, 2, 1))
+ggplot(data=top.coef, aes(x=x, y=X, fill = sign)) +
+geom_bar(stat="identity")+
+theme_classic()+ scale_fill_manual(values=col)+ylab("Phylums")+xlab("Coefficients")
+dev.off()
+```
+
+```{r}
+coef <- read.csv("processing/coefficient_permanova_group_3_vs_group_1.csv")
+
+pdf("results/figures/barplot_coefficients_permanova_group1_vs_group3_phylum_NON_SIGN.pdf", height = 3, width = 6)
+top.coef <- coef[rev(order(abs(coef$x))),]
+top.coef$sign <- ifelse(top.coef$x < 0, "neg", "pos")
+top.coef <- top.coef[order(top.coef$x),]
+top.coef$X <- factor(top.coef$X, levels = top.coef$X)
+par(mar = c(3, 14, 2, 1))
+ggplot(data=top.coef, aes(x=x, y=X, fill = sign)) +
+geom_bar(stat="identity")+
+theme_classic()+ scale_fill_manual(values=col)+ylab("Phylums")+xlab("Coefficients")
+dev.off()
+```
+
+## load data
+```{r}
+family <- read.csv("processing/data_family_clean.csv")
+family_data <- merge(cluster, family, by = "X")
+family_data$X.1 <- NULL
+family_data_2 <- family_data
+family_data$X <- NULL
+```
+
+```{r}
+dist <- vegdist(family_data[,-1])
+anova(betadisper(dist, family_data$cluster))
+```
+
+```{r}
+permutest(betadisper(dist, family_data$cluster), pairwise = TRUE)
+```
+
+```{r}
+permanova <- adonis(family_data[,-1] ~ family_data$cluster, method = "euclidean", permutations = 999)
+```
+```{r}
+coefficients(permanova)[2,]
+```
+
+```{r}
+pairwise.adonis <- function(x,factors, sim.method, p.adjust.m){
+  coeff <- list()
+  co = as.matrix(combn(unique(factors),2))
+  pairs = c()
+  F.Model =c()
+  R2 = c()
+  p.value = c()
+  for(elem in 1:ncol(co)){
+    print(factors[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem]))])
+    data <- x[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem])),]
+    group <- factors[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem]))] 
+    ## test homogeneity
+    dist <- vegdist(data)
+    print(anova(betadisper(dist, group)))
+
+    ad = adonis(x[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem])),] ~ factors[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem]))] ,
+                permutations = 9999, method =sim.method);
+    pairs = c(pairs,paste(co[1,elem],'vs',co[2,elem]));
+    F.Model =c(F.Model,ad$aov.tab[1,4]);
+    R2 = c(R2,ad$aov.tab[1,5]);
+    p.value = c(p.value,ad$aov.tab[1,6])
+    print(coefficients(ad)[2,])
+    coeff[[elem]] = coefficients(ad)[2,]
+ }
+write.csv(coeff[[1]], "processing/coefficient_permanova_group_2_vs_group_1.csv")
+p.adjusted = p.adjust(p.value,method=p.adjust.m)
+pairw.res = data.frame(pairs,F.Model,R2,p.value,p.adjusted)
+return(pairw.res)
+}
+
+PW.Adonis=pairwise.adonis(family_data[,-1],family_data$cluster,sim.method="bray",p.adjust.m = "bonferroni")
+
+write.table(PW.Adonis,"results/Adonis-Results_family.csv",sep=",")
+```
+
+```{r}
+col <- c("#E69F00", "#56B4E9")
+```
+
+```{r}
+coef <- read.csv("processing/coefficient_permanova_group_2_vs_group_1.csv")
+
+pdf("results/figures/barplot_coefficients_permanova_group1_vs_group2_family.pdf", height = 3, width = 6)
+top.coef <- coef[rev(order(abs(coef$x)))[1:20],]
+top.coef$sign <- ifelse(top.coef$x < 0, "neg", "pos")
+top.coef <- top.coef[order(top.coef$x),]
+top.coef$X <- factor(top.coef$X, levels = top.coef$X)
+par(mar = c(3, 14, 2, 1))
+ggplot(data=top.coef, aes(x=x, y=X, fill = sign)) +
+geom_bar(stat="identity")+
+theme_classic()+ scale_fill_manual(values=col)+ylab("Families")+xlab("Coefficients")
+dev.off()
+```
+
+```{r}
+coef <- read.csv("processing/coefficient_permanova_group_3_vs_group_1.csv")
+
+pdf("results/figures/barplot_coefficients_permanova_group1_vs_group3_family.pdf", height = 3, width = 6)
+top.coef <- coef[rev(order(abs(coef$x)))[1:20],]
+top.coef$sign <- ifelse(top.coef$x < 0, "neg", "pos")
+top.coef <- top.coef[order(top.coef$x),]
+top.coef$X <- factor(top.coef$X, levels = top.coef$X)
+par(mar = c(3, 14, 2, 1))
+ggplot(data=top.coef, aes(x=x, y=X, fill = sign)) +
+geom_bar(stat="identity")+
+theme_classic()+ scale_fill_manual(values=col)+ylab("Families")+xlab("Coefficients")
+dev.off()
+```
+
+```{r}
+genus <- read.csv("processing/data_genus_clean.csv")
+genus_data <- merge(cluster, genus, by = "X")
+genus_data$X <- NULL
+genus_data$X.1 <- NULL
+```
+
+```{r}
+pairwise.adonis <- function(x,factors, sim.method, p.adjust.m){
+  coeff <- list()
+  co = as.matrix(combn(unique(factors),2))
+  pairs = c()
+  F.Model =c()
+  R2 = c()
+  p.value = c()
+  for(elem in 1:ncol(co)){
+    data <- x[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem])),]
+    group <- factors[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem]))] 
+    ## test homogeneity
+    dist <- vegdist(data)
+    print(anova(betadisper(dist, group)))
+
+    ad = adonis(x[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem])),] ~ factors[factors %in% c(as.character(co[1,elem]),as.character(co[2,elem]))] ,
+                permutations = 9999, method =sim.method);
+    pairs = c(pairs,paste(co[1,elem],'vs',co[2,elem]));
+    F.Model =c(F.Model,ad$aov.tab[1,4]);
+    R2 = c(R2,ad$aov.tab[1,5]);
+    p.value = c(p.value,ad$aov.tab[1,6])
+    coeff[[elem]] = coefficients(ad)["factors[factors %in% c(as.character(co[1, elem]), as.character(co[2, elem]))]1",]
+ }
+write.csv(coeff[[1]], "processing/coefficient_permanova_group_2_vs_group_1_genus.csv")
+p.adjusted = p.adjust(p.value,method=p.adjust.m)
+pairw.res = data.frame(pairs,F.Model,R2,p.value,p.adjusted)
+return(pairw.res)
+}
+
+PW.Adonis=pairwise.adonis(genus_data[,-1],genus_data$cluster,sim.method="bray",p.adjust.m = "bonferroni")
+
+write.table(PW.Adonis,"results/Adonis-Results_genus.csv",sep=",")
+```
+

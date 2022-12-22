@@ -1,0 +1,169 @@
+---
+title: "correlation per group"
+output: html_notebook
+---
+
+
+### enter your path to folder
+```{r}
+path <- "/home/flomik/Desktop/Code-PHD/Git/HIV_multiomics"
+```
+
+### set directory
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath(path)) 
+```
+
+
+```{r}
+library(Hmisc)
+library(dplyr)
+library(xlsx)
+```
+
+
+```{r}
+data_met <- read.csv("processing/metabolomics_log2_plusHC.csv", check.names = FALSE)
+data_met$cluster <- factor(data_met$cluster, levels = c("Ctrl", 1, 2, 3))
+
+mdm <- read.csv("processing/list_microbiome_derived_metabolites_heatmap_all_comparisons_corrected.csv", header = FALSE)
+data_met <- data_met[,colnames(data_met) %in% c("X","cluster", as.vector(mdm$V1))]
+```
+
+## load metabolom-microbiome data
+```{r}
+data <- read.csv("processing/clinical_data_clean_for_regression_models.csv")
+data$X.1 <- NULL
+data$AGE <- as.numeric(data$AGE)
+data$Observed <- as.numeric(data$Observed)
+data$ob6 <- as.numeric(data$ob6)
+data$ob10 <- as.numeric(data$ob10)
+
+data$METS <- as.factor(data$METS)
+data$central_obesity <- as.factor(data$central_obesity)
+data$Ethnic <- as.factor(data$Ethnic)
+data$Origin <- as.factor(data$Origin)
+data$Transm_mode <- as.factor(data$Transm_mode)
+data$hypertension <- as.factor(data$hypertension)
+data$cluster <- as.factor(data$cluster)
+data$diabetes <- NULL
+data$X3rd_Drug <- NULL
+data$GENDER <- as.factor(data$GENDER)
+data$CD4_cat <- as.factor(data$CD4_cat)
+data$CD8_cat <- as.factor(data$CD8_cat)
+data$CD4_ART_cat <- as.factor(data$CD4_ART_cat)
+data$CD4_nadir_cat <- as.factor(data$CD4_nadir_cat)
+data$VL_ART_cat <- as.factor(data$VL_ART_cat)
+data$alcohol_cat <- as.factor(data$alcohol_cat)
+data$ob6_cat <- as.factor(data$ob6_cat)
+data$drug_1 <- as.factor(data$drug_1)
+data$drug_3 <- as.factor(data$drug_3)
+data$drug_bis <- as.factor(data$drug_bis)
+
+data$Diab <- NULL
+```
+
+```{r}
+data_met <- merge(data, data_met, by = "X")
+data_clinical <- data_met[,c(1:66)]
+data_met <- data_met[,-c(1:67)]
+```
+
+```{r}
+names(data_met)
+```
+
+```{r}
+names(data_clinical)
+data_clinical$cluster.y <- NULL
+names(data_clinical)[4] <- "cluster"
+```
+
+```{r}
+names(data_clinical)
+```
+
+```{r}
+r <- list()
+r2 <- list()
+plm <- as.data.frame(matrix(0,nrow=5,ncol=8))
+m = 1
+
+for (i in 2:ncol(data_clinical)) {
+  for (j in 1:ncol(data_met)) {
+    print(names(data_clinical)[i])
+    print(names(data_met)[j])
+    clinical <- data_clinical[,i]
+    met <- data_met[,j]
+    model <- lm(met ~ clinical, na.action=na.omit)
+    plm[m,1:4] <- coef(summary(model))[1,]
+    plm[m,5:6] <- confint(model)[1,]
+    plm[m,7] <- names(data_clinical)[i]
+    plm[m,8] <- names(data_met)[j]
+    m = m + 1
+    #h <- summary(model)$r.squared
+    #n <- summary(model)$adj.r.squared
+    #r[[j]] <- h
+    #r2[[j]] <- n
+  }
+}
+
+colnames(plm) <- c("Estimate","StdError","tStat","pvalue", "CI_Low", "CI_high", "clinical", "metabolite")
+
+plm$padjust <- p.adjust(plm$pvalue,method="BH")
+
+#plm$R2 <- r
+#plm$R2_adj <- r2
+sigplm <- plm[plm$padjust<0.05,] #look only at those with adjusted p.value < 0.05
+sigplm <- sigplm[complete.cases(sigplm),]
+
+write.csv(plm, "results/results_regression_metabolome_mdm_clinical.csv")
+
+sigplm$clinical <- gsub("\\_cat", "",sigplm$clinical)
+sigplm <- sigplm[sigplm$clinical != "duration_months",]
+
+write.csv(sigplm, "results/results_regression_metabolome_mdm_clinical_filt_2.csv", quote = FALSE)
+
+unique(sigplm$clinical)
+```
+```{r}
+table_nodes <- data.frame(item = unique(sigplm$clinical))
+table_nodes$item
+table_nodes$names <- c("Duration ART", "SNF Cluster", "Gender", "Metabolic Syndrome", "Ethnicity", "Origin", "HIV transmission mode", "Waist circumference",
+                       "Current Smoking", "Centrale Obesity", "Hypertension", "VAT", "SAT", "Alpha diversity (Simpson)", "CD4", "CD8", "CD4/CD8 ratio", "CD4 at ART initiation","CD4 nadir", "Alcohol", "Current Viral load", "Viral load at ART initiation", "Duration ART", "Previous ART duration", "Poultry intake", "Choice of fat for cooking", "Vegetable intake", "Antihypertensives", "Cumulative Smoking", "First Drug", "Age", "First Drug", "Third Drug", "ART Combination", "eGFR", "Tgl", "ALAT", "Creatinin")
+table_nodes$subcategories <- NA
+table_nodes$subcategories[table_nodes$names %in% c("Duration ART", "Previous ART duration", "First Drug", "Third Drug", "ART Combination")] <- "cART related"
+
+table_nodes$subcategories[table_nodes$names %in% c("Alpha diversity (Simpson)")] <- "Microbiome"
+
+table_nodes$subcategories[table_nodes$names %in% c("Gender","Ethnicity", "Origin", "HIV transmission mode", "Age")] <- "Patient demography"
+
+table_nodes$subcategories[table_nodes$names %in% c("SNF Cluster","CD4", "CD8", "CD4/CD8 ratio", "CD4 at ART initiation","CD4 nadir", "Current Viral load", "Viral load at ART initiation")] <- "HIV-related"
+
+table_nodes$subcategories[table_nodes$names %in% c("Current Smoking", "Poultry intake", "Choice of fat for cooking", "Vegetable intake", "Antihypertensives", "Cumulative Smoking", "Alcohol")] <- "Food/Medicine"
+
+table_nodes$subcategories[is.na(table_nodes$subcategories)] <- "Weight and comorbidities"
+
+table_nodes_2 <- data.frame(item = unique(sigplm$metabolite), names = unique(sigplm$metabolite), subcategories = "Metabolites")
+
+table_nodes <- rbind(table_nodes, table_nodes_2)
+write.csv(table_nodes, "results/results_regression_metabolome_mdm_clinical_filt_table_nodes.csv", quote = FALSE)
+```
+FEC44F --> met
+737373 --> patients
+micro --> 73C3AF
+EC7014 --> comor
+0570B0 --> food
+238B45 --> HIV
+AE017E --> drug
+
+
+
+
+
+
+
+
+
+
+
